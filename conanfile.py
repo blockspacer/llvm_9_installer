@@ -21,7 +21,7 @@ class Clang9InstallerConan(ConanFile):
     llvm_9_options = {
         "force_x86_64": True,
         "link_ltinfo": False,
-        "include_what_you_use": False,
+        "include_what_you_use": True,
         "enable_msan": False,
         "enable_tsan": False,
         "enable_ubsan": False,
@@ -70,6 +70,9 @@ class Clang9InstallerConan(ConanFile):
         return str(self.settings.get_safe("compiler.sanitizer"))
 
     def configure(self):
+        if self.settings.compiler.libcxx == 'libc++':
+          self.output.info("detected libc++")
+
         self.set_dependency_options("llvm_9", self.llvm_9_options)
 
         if self._sanitizer != 'None' \
@@ -80,22 +83,32 @@ class Clang9InstallerConan(ConanFile):
            and self.settings.compiler.libcxx != 'libc++':
           raise ConanInvalidConfiguration("sanitizers require compiler.libcxx=libc++")
 
+        self.output.info("compiler is {}".format(str(self.settings.compiler)))
+
     def requirements(self):
+        self.output.info("requirements")
+
         self.requires("llvm_9/master@conan/stable")
 
     def package(self):
+        self.output.info("package")
         self.check_options_same("llvm_9", self.llvm_9_options)
 
         self.copy(pattern="LICENSE", dst="licenses", src=self.build_folder)
 
+    # NOTE: It is build-time tool.
+    # Any project configuration must be able to depend on it.
     def package_id(self):
+        self.output.info("package_id")
         self.info.include_build_settings()
         if self.settings.os_build == "Windows":
             del self.info.settings.arch_build # same build is used for x86 and x86_64
         del self.info.settings.arch
         del self.info.settings.compiler
+        del self.info.settings.build_type
 
     def package_info(self):
+        self.output.info("package_info")
         llvm_root = self.deps_cpp_info["llvm_9"].rootpath
         self.env_info.LLVM_NORMPATH = os.path.normpath(llvm_root)
         self.output.info("llvm_9 rootpath: {}".format(llvm_root))
@@ -108,17 +121,23 @@ class Clang9InstallerConan(ConanFile):
         self.env_info.CPP_ANALYZER_PATH = os.path.join(llvm_root, "libexec", "c++-analyzer")
         self.env_info.CCC_ANALYZER_PATH = os.path.join(llvm_root, "libexec", "ccc-analyzer")
 
-        for path in self.deps_cpp_info.res_paths:
-            self.cpp_info.resdirs.append(path)
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
+          for path in self.deps_cpp_info.res_paths:
+              self.cpp_info.resdirs.append(path)
 
-        self.cpp_info.includedirs.append(llvm_root)
-        self.cpp_info.includedirs.append(os.path.join(llvm_root, "include"))
-        for path in self.deps_cpp_info.include_paths:
-            self.cpp_info.includedirs.append(path)
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
+          self.cpp_info.includedirs.append(llvm_root)
+          self.cpp_info.includedirs.append(os.path.join(llvm_root, "include"))
+          for path in self.deps_cpp_info.include_paths:
+              self.cpp_info.includedirs.append(path)
 
-        self.env_info.LD_LIBRARY_PATH.append(os.path.join(llvm_root, "lib"))
-        for path in self.deps_cpp_info.lib_paths:
-            self.env_info.LD_LIBRARY_PATH.append(path)
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
+          self.env_info.LD_LIBRARY_PATH.append(os.path.join(llvm_root, "lib"))
+          for path in self.deps_cpp_info.lib_paths:
+              self.env_info.LD_LIBRARY_PATH.append(path)
 
         self.env_info.PATH.append(os.path.join(llvm_root, "bin"))
         self.env_info.PATH.append(os.path.join(llvm_root, "libexec"))
@@ -142,7 +161,8 @@ class Clang9InstallerConan(ConanFile):
         self.env_info.RC = os.path.join(llvm_root, "bin", "llvm-rc")
 
         common_flags = []
-        if "clang" in str(self.settings.compiler) and self.settings.compiler.libcxx == 'libc++':
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
           common_flags.append("-lc++")
           common_flags.append("-lc++abi")
           common_flags.append("-lunwind")
@@ -153,28 +173,52 @@ class Clang9InstallerConan(ConanFile):
 
         self.cpp_info.exelinkflags.extend(common_flags)
 
-        # we use libstdc++, not libstdc++
-        badflag = '-stdlib=libstdc++'
-        while badflag in self.env_info.LDFLAGS: self.env_info.LDFLAGS.remove(badflag)
-        while badflag in self.env_info.CXXFLAGS: self.env_info.CXXFLAGS.remove(badflag)
-        while badflag in self.env_info.CFLAGS: self.env_info.CFLAGS.remove(badflag)
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
+          # we use libstdc++, not libstdc++
+          badflag = '-stdlib=libstdc++'
+          while badflag in self.env_info.LDFLAGS:
+            self.env_info.LDFLAGS.remove(badflag)
+          while badflag in self.env_info.CXXFLAGS:
+            self.env_info.CXXFLAGS.remove(badflag)
+          while badflag in self.env_info.CFLAGS:
+            self.env_info.CFLAGS.remove(badflag)
 
-        # we use dynamic libstdc++
-        badflag = '-static-libstdc++'
-        while badflag in self.env_info.LDFLAGS: self.env_info.LDFLAGS.remove(badflag)
-        while badflag in self.env_info.CXXFLAGS: self.env_info.CXXFLAGS.remove(badflag)
-        while badflag in self.env_info.CFLAGS: self.env_info.CFLAGS.remove(badflag)
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
+          # we use dynamic libstdc++
+          badflag = '-static-libstdc++'
+          while badflag in self.env_info.LDFLAGS:
+            self.env_info.LDFLAGS.remove(badflag)
+          while badflag in self.env_info.CXXFLAGS:
+            self.env_info.CXXFLAGS.remove(badflag)
+          while badflag in self.env_info.CFLAGS:
+            self.env_info.CFLAGS.remove(badflag)
 
-        if "clang" in str(self.settings.compiler) and self.settings.compiler.libcxx == 'libc++':
+        if self._sanitizer == 'Address':
+          self.env_info.ASAN_SYMBOLIZER_PATH = "{}/bin/llvm-symbolizer".format(llvm_root)
+        if self._sanitizer == 'Thread':
+          self.env_info.TSAN_SYMBOLIZER_PATH = "{}/bin/llvm-symbolizer".format(llvm_root)
+        if self._sanitizer == 'Memory':
+          self.env_info.MSAN_SYMBOLIZER_PATH = "{}/bin/llvm-symbolizer".format(llvm_root)
+        if self._sanitizer == 'UndefinedBehavior' \
+          or self._sanitizer == 'AddressUndefinedBehavior':
+          self.env_info.UBSAN_SYMBOLIZER_PATH = "{}/bin/llvm-symbolizer".format(llvm_root)
+          self.env_info.ASAN_SYMBOLIZER_PATH = "{}/bin/llvm-symbolizer".format(llvm_root)
+
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
           self.env_info.LDFLAGS.append("-stdlib=libc++")
 
-        if "clang" in str(self.settings.compiler) and self.settings.compiler.libcxx == 'libc++':
+        if "clang" in str(self.settings.compiler) \
+          and self.settings.compiler.libcxx == 'libc++':
           # https://root-forum.cern.ch/t/root-6-10-08-on-macos-high-sierra-compiling-macro-example/26651/24
           self.env_info.CXXFLAGS.append("-Wno-unused-command-line-argument")
           self.env_info.CXXFLAGS.append("-Wno-error=unused-command-line-argument")
           self.env_info.CXXFLAGS.append("-nostdinc++")
           self.env_info.CXXFLAGS.append("-nodefaultlibs")
           self.env_info.CXXFLAGS.append("-lc++abi")
+          self.env_info.CXXFLAGS.append("-lunwind")
           self.env_info.CXXFLAGS.append("-lc++")
           self.env_info.CXXFLAGS.append("-lm")
           self.env_info.CXXFLAGS.append("-lc")

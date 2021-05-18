@@ -13,4 +13,4 @@ class TestPackageConan(ConanFile):
 
     def test(self):
         bin_path = os.path.join("bin", "test_package")
-        self.run(command=bin_path, run_environment=True)
+        self.run(command=bin_path + " --version", run_environment=True)
