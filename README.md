@@ -8,7 +8,8 @@ Features:
 * bundles libc++ i.e. -stdlib=libc++ -lc++abi -lc++ -lm -lc
 * bundles lld as linker i.e. -fuse-ld=lld
 * bundles std header files i.e. -I.../include/c++/v1 -I.../include -nostdinc++ -nodefaultlibs
-* bundles clang-tidy, scan-build, ccc-analyzer, c++-analyzer, clang-format to analyze source files
+* bundles clang-tidy, scan-build, ccc-analyzer, c++-analyzer, clang-format to analyze and modify source files
+* bundles LLVM libs. For example, `LibTooling` can be used to parse source code.
 * (conan option) can bundle include-what-you-use to analyze #includes of source files
 * (conan option) can bundle google-sanitizers: ASAN - memory error detector, MSAN - detects the use of uninitialized memory, TSAN - data race detector, etc.
 
@@ -17,7 +18,8 @@ Features:
 * Make sure everyone uses same compiler, std headers, linker, libc++, etc.
 * Avoid conflicts with system libs, headers, etc. when using bundled 'libc++' ("-nostdinc++", "-nodefaultlibs", etc.)
 * Set env. vars automatically i.e. UBSAN_SYMBOLIZER_PATH will point to llvm-symbolizer when self.settings.get_safe("compiler.sanitizer") == 'Memory'
-* Set paths in CXXFLAGS to compiler headers and libs automatically
+* Set paths in CXXFLAGS to compiler headers and libs in LDFLAGS automatically
+* Set LD_PRELOAD sanitiled `clang_rt` libs automatically i.e. preloads libs in `.../lib/clang/{clang_version}/lib/{platform_name}/libclang_rt.*san-{platform_target}.so`
 
 ## How it works
 
@@ -32,12 +34,22 @@ Add in conanfile.py:
         self.build_requires("llvm_9_installer/master@conan/stable")
 ```
 
-If you want to link with shared llvm libs, than add in conanfile.py:
+You may need to link with `CONAN_PKG::llvm_9_installer` to propagate compiler and linker flags:
+
+```cmake
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  CONAN_PKG::llvm_9_installer
+)
+```
+
+If you want to link with shared llvm libs i.e. LibTooling, etc., than add in conanfile.py:
 
 ```python
     def requirements(self):
       self.requires("llvm_9/master@conan/stable")
 ```
+
+Usually you do not need to link with llvm libs, in that case no need to add `self.requires("llvm_9/master@conan/stable")`.
 
 Create and use special conan profile, see `Usage` section below.
 
@@ -54,13 +66,15 @@ otherwise you will get link errors!
 
 ## Before installation
 
-Build and install https://github.com/blockspacer/conan_llvm_9
+Follow instructions in README to build `conan_llvm_9`:
+
+How to build and install `conan_llvm_9`: https://github.com/blockspacer/conan_llvm_9
 
 `llvm_9_installer` is wrapper around `conan_llvm_9`
 
 ## Build and install
 
-Conan profile (in `~/.conan/profiles`) must use same CXX ABI as LLVM libs, example profile:
+Conan profile (in `~/.conan/profiles`) must use same CXX ABI as used LLVM libs, example profile:
 
 ```bash
 [settings]
@@ -143,7 +157,7 @@ rm -rf local_build_iwyu/package_dir
 
 ## Usage
 
-Create conan profile `~.conan/profiles/clang_with_libcpp_installer`:
+Create conan profile `~.conan/profiles/clang_libcpp`:
 
 ```bash
 [settings]
@@ -157,7 +171,9 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
-compiler.sanitizer=None
+
+build_type=Release
+llvm_9:build_type=Release
 
 [options]
 llvm_9_installer:include_what_you_use=True
@@ -173,11 +189,24 @@ Now you can use `conan create` command with created conan profile:
 conan create . \
   conan/stable \
   -s build_type=Release \
-  --profile clang_with_libcpp_installer \
+  --profile clang_libcpp \
   --build missing
 ```
 
-Note `--profile clang_with_libcpp_installer` above.
+Note `--profile clang_libcpp` above.
+
+If you want to create sanitized package, than use command similar to:
+
+```bash
+# Example profile `~.conan/profiles/clang_libcpp_asan` can be found below (need to scroll a bit)
+conan create . \
+  conan/stable \
+  -s build_type=Release \
+  --profile clang_libcpp_asan \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:include_what_you_use=False \
+  -o llvm_9_installer:use_sanitizer="Address;Undefined"
+```
 
 ## How to run llvm tools (clang-tidy, clang-format, etc.)
 
@@ -227,13 +256,80 @@ For details, see:
 * https://github.com/include-what-you-use/include-what-you-use/tree/master/docs
 * https://github.com/hdclark/Ygor/blob/master/artifacts/20180225_include-what-you-use/iwyu_how-to.txt
 
+## Build and install to use with sanitizers (example with ASAN)
+
+Conan profile (in `~/.conan/profiles`) must use same CXX ABI as LLVM libs
+
+Example profile `~.conan/profiles/clang_libcpp_asan` can be found below (need to scroll a bit)
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package/build/
+rm -rf local_build_*
+
+cmake -E time \
+  conan install . \
+  --install-folder local_build_asan \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:include_what_you_use=False \
+  -o llvm_9_installer:use_sanitizer="Address;Undefined" \
+  --profile clang_libcpp_asan
+
+cmake -E time \
+    conan source . \
+    --source-folder local_build_asan \
+    --install-folder local_build_asan
+
+conan build . \
+    --build-folder local_build_asan \
+    --source-folder local_build_asan \
+    --install-folder local_build_asan
+
+# remove before `conan export-pkg`
+(CONAN_REVISIONS_ENABLED=1 \
+    conan remove --force llvm_9_installer || true)
+
+conan package . \
+    --build-folder local_build_asan \
+    --package-folder local_build_asan/package_dir \
+    --source-folder local_build_asan \
+    --install-folder local_build_asan
+
+conan export-pkg . \
+    conan/stable \
+    --package-folder local_build_asan/package_dir \
+    --settings build_type=Release \
+    --force \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:include_what_you_use=False \
+    -o llvm_9_installer:use_sanitizer="Address;Undefined" \
+    --profile clang_libcpp_asan
+
+cmake -E time \
+  conan test test_package llvm_9_installer/master@conan/stable \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:include_what_you_use=False \
+  -o llvm_9_installer:use_sanitizer="Address;Undefined" \
+  --profile clang_libcpp_asan
+
+rm -rf local_build_asan/package_dir
+```
+
 ## How to use with sanitizers
 
 Edit `~/.conan/settings.yml` as stated in https://docs.conan.io/en/latest/howtos/sanitizers.html#adding-a-list-of-commonly-used-values
 
 You need to add `sanitizer: [None, Address, Thread, Memory, UndefinedBehavior, AddressUndefinedBehavior]` after each line with `cppstd`.
 
-Edit `~.conan/profiles/clang_with_libcpp_installer` and add into `[settings]` section:
+Edit `~.conan/profiles/clang_libcpp` and add into `[settings]` section:
 
 ```bash
 compiler.sanitizer=AddressUndefinedBehavior
@@ -245,67 +341,21 @@ Example for `-fsanitize=address,undefined` i.e. `AddressUndefinedBehavior`:
 
 ```bash
 [env]
-CXXFLAGS= \
-  -DMEMORY_TOOL_REPLACES_ALLOCATOR=1 \
-  -D_FORTIFY_SOURCE=0 \
-  -DUNDEFINED_SANITIZER=1 \
-  -DUNDEFINED_BEHAVIOR_SANITIZER=1 \
-  -g -O0 \
-  -fPIC \
-  -fno-optimize-sibling-calls \
-  -fno-omit-frame-pointer \
-  -fno-stack-protector \
-  -fno-wrapv \
-  -fno-sanitize-recover=all \
-  -fsanitize-recover=unsigned-integer-overflow \
-  -fsanitize=address,undefined \
-  -shared-libsan \
-  -fno-sanitize=nullability-arg \
-  -fno-sanitize=nullability-assign \
-  -fno-sanitize=nullability-return \
-  -fsanitize-trap=undefined \
-  -fsanitize=float-divide-by-zero \
-  -fno-sanitize=vptr
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DADDRESS_SANITIZER=1 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fPIC -fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-wrapv -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
 
-CFLAGS= \
-  -DMEMORY_TOOL_REPLACES_ALLOCATOR=1 \
-  -D_FORTIFY_SOURCE=0 \
-  -DUNDEFINED_SANITIZER=1 \
-  -DUNDEFINED_BEHAVIOR_SANITIZER=1 \
-  -g -O0 \
-  -fPIC \
-  -fno-optimize-sibling-calls \
-  -fno-omit-frame-pointer \
-  -fno-stack-protector \
-  -fno-wrapv \
-  -fno-sanitize-recover=all \
-  -fsanitize-recover=unsigned-integer-overflow \
-  -fsanitize=address,undefined \
-  -shared-libsan \
-  -fno-sanitize=nullability-arg \
-  -fno-sanitize=nullability-assign \
-  -fno-sanitize=nullability-return \
-  -fsanitize-trap=undefined \
-  -fsanitize=float-divide-by-zero \
-  -fno-sanitize=vptr
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DADDRESS_SANITIZER=1 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fPIC -fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-wrapv -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
 
-LDFLAGS= \
-  -fno-optimize-sibling-calls \
-  -fno-omit-frame-pointer \
-  -fno-stack-protector \
-  -fno-sanitize-recover=all \
-  -fsanitize-recover=unsigned-integer-overflow \
-  -fsanitize=address,undefined \
-  -shared-libsan \
-  -fno-sanitize=nullability-arg \
-  -fno-sanitize=nullability-assign \
-  -fno-sanitize=nullability-return \
-  -fsanitize-trap=undefined \
-  -fsanitize=float-divide-by-zero \
-  -fno-sanitize=vptr
+LDFLAGS=-fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
 ```
 
 ### About Undefined Behavior Sanitizer
+
+Detects lots of non-memory-related undefined behaviour:
+
+* Signed integer overflow
+* Dereferencing null pointers
+* Pointer arithmetic overflow
+* Dynamic arrays whose size is non-positive
 
 NOTE: Disable custom memory allocation functions (use use_alloc_shim=False). This can hide memory access bugs and prevent the detection of memory access errors.
 
@@ -313,7 +363,9 @@ Edit `~.conan/profiles/{{YOUR_PROFILE_NAME_HERE}}` and add into `[env]` section:
 
 ```bash
 # see https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
-UBSAN_OPTIONS="fast_unwind_on_malloc=0:handle_segv=0:disable_coredump=0:halt_on_error=1:print_stacktrace=1:report_error_type=1"
+ASAN_OPTIONS=fast_unwind_on_malloc=0:strict_init_order=0:check_initialization_order=false:symbolize=1:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1
+
+UBSAN_OPTIONS=fast_unwind_on_malloc=0:handle_segv=0:disable_coredump=0:halt_on_error=1:print_stacktrace=1:report_error_type=1
 
 # NOTE: optional, llvm_9_installer able to set UBSAN_SYMBOLIZER_PATH automatically
 # make sure that env. var. UBSAN_SYMBOLIZER_PATH points to llvm-symbolizer
@@ -322,11 +374,11 @@ UBSAN_OPTIONS="fast_unwind_on_malloc=0:handle_segv=0:disable_coredump=0:halt_on_
 # echo $UBSAN_SYMBOLIZER_PATH
 # UBSAN_SYMBOLIZER_PATH=$(find ~/.conan/data/llvm_tools/master/conan/stable/package/ -path "*bin/llvm-symbolizer" | head -n 1)
 
-CFLAGS="-fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DADDRESS_SANITIZER=1 -fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
 
-CXXFLAGS="-fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DADDRESS_SANITIZER=1 -fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
 
-LDFLAGS="-stdlib=libc++ -lc++ -lc++abi -lunwind"
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
 ```
 
 NOTE: Make sure to use clang++ (not ld) as a linker, so that your executable is linked with proper UBSan runtime libraries.
@@ -369,6 +421,8 @@ NOTE: you can create blacklist file; see:
 
 ### About Memory Sanitizer
 
+Memory sanitizer (MSan) does check for uninitialized memory accesses
+
 NOTE: MemorySanitizer requires that all program code is instrumented.
 This also includes any libraries that the program depends on, even libc. Failing to achieve this may result in false reports.
 For the same reason you may need to replace all inline assembly code that writes to memory with a pure C/C++ code.
@@ -379,7 +433,7 @@ Edit `~.conan/profiles/{{YOUR_PROFILE_NAME_HERE}}` and add into `[env]` section:
 
 ```bash
 # see https://github.com/google/sanitizers/wiki/SanitizerCommonFlags
-MSAN_OPTIONS="poison_in_dtor=1:fast_unwind_on_malloc=0:check_initialization_order=true:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1"
+MSAN_OPTIONS=poison_in_dtor=1:fast_unwind_on_malloc=0:check_initialization_order=false:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1
 # you can also set LSAN_OPTIONS=suppressions=suppr.txt
 
 # NOTE: optional, llvm_9_installer able to set MSAN_SYMBOLIZER_PATH automatically
@@ -389,11 +443,13 @@ MSAN_OPTIONS="poison_in_dtor=1:fast_unwind_on_malloc=0:check_initialization_orde
 # echo $MSAN_SYMBOLIZER_PATH
 # MSAN_SYMBOLIZER_PATH=$(find ~/.conan/data/llvm_tools/master/conan/stable/package/ -path "*bin/llvm-symbolizer" | head -n 1)
 
-CFLAGS="-fsanitize=memory -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+# NOTE: you can use -fsanitize-memory-track-origins
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DMEMORY_SANITIZER=1 -fsanitize=memory -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
 
-CXXFLAGS="-fsanitize=memory -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+# NOTE: you can use -fsanitize-memory-track-origins
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DMEMORY_SANITIZER=1 -fsanitize=memory -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
 
-LDFLAGS="-stdlib=libc++ -lc++ -lc++abi -lunwind"
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
 ```
 
 If you want MemorySanitizer to work properly and not produce any false positives, you must ensure that all the code in your program and in the libraries it uses is instrumented (i.e. built with `-fsanitize=memory`).
@@ -402,7 +458,10 @@ You need to re-build both C++ standard library and googletest (and other depende
 
 Re-build all required projects with MSan-instrumented C++ standard library.
 
-NOTE: re-build some deps with custom MSan-instrumented C++ standard library. For that you can add to `CMAKE_C_FLAGS` and `CMAKE_CXX_FLAGS`: `-fsanitize=memory -stdlib=libc++ -L/usr/src/libcxx_msan/lib -lc++abi -I/usr/src/libcxx_msan/include -I/usr/src/libcxx_msan/include/c++/v1` (replace paths to yours). Usually dependency will have option like `-o *:enable_msan=True` to achieve same effect.
+NOTE: re-build some deps with custom MSan-instrumented C++ standard library.
+For that you can add to `CMAKE_C_FLAGS` and `CMAKE_CXX_FLAGS`:
+`-fsanitize=memory -stdlib=libc++ -L/usr/src/libcxx_msan/lib -lc++abi -I/usr/src/libcxx_msan/include -I/usr/src/libcxx_msan/include/c++/v1` (replace paths to yours).
+Usually dependency will have option like `-o *:use_sanitizer="Address;Undefined"` to achieve same effect.
 
 You must build both project and deps with MSan!
 
@@ -448,6 +507,8 @@ FAQ:
 
 NOTE: build with exceptions and rtti disabled; see: [https://bugs.chromium.org/p/chromium/issues/detail?id=832808](https://bugs.chromium.org/p/chromium/issues/detail?id=832808)
 
+NOTE: Address Sanitizer NEVER catches uninitialized memory accesses
+
 For details, see:
 
 * [http://btorpey.github.io/blog/2014/03/27/using-clangs-address-sanitizer/](http://btorpey.github.io/blog/2014/03/27/using-clangs-address-sanitizer/)
@@ -460,7 +521,10 @@ Edit `~.conan/profiles/{{YOUR_PROFILE_NAME_HERE}}` and add into `[env]` section:
 
 ```bash
 # see https://github.com/google/sanitizers/wiki/AddressSanitizerFlags
-ASAN_OPTIONS="fast_unwind_on_malloc=0:strict_init_order=1:check_initialization_order=true:symbolize=1:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1"
+ASAN_OPTIONS=fast_unwind_on_malloc=0:strict_init_order=0:check_initialization_order=false:symbolize=1:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1
+
+UBSAN_OPTIONS=fast_unwind_on_malloc=0:handle_segv=0:disable_coredump=0:halt_on_error=1:print_stacktrace=1:report_error_type=1
+
 # you can also set LSAN_OPTIONS=suppressions=suppr.txt
 
 # NOTE: optional, llvm_9_installer able to set ASAN_SYMBOLIZER_PATH automatically
@@ -470,11 +534,11 @@ ASAN_OPTIONS="fast_unwind_on_malloc=0:strict_init_order=1:check_initialization_o
 # echo $ASAN_SYMBOLIZER_PATH
 # ASAN_SYMBOLIZER_PATH=$(find ~/.conan/data/llvm_tools/master/conan/stable/package/ -path "*bin/llvm-symbolizer" | head -n 1)
 
-CFLAGS="-fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DADDRESS_SANITIZER=1 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fPIC -fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-wrapv -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
 
-CXXFLAGS="-fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DADDRESS_SANITIZER=1 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fPIC -fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-wrapv -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
 
-LDFLAGS="-stdlib=libc++ -lc++ -lc++abi -lunwind"
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
 ```
 
 NOTE: Change of options may require rebuild of some deps (`--build=missing`).
@@ -508,7 +572,7 @@ Edit `~.conan/profiles/{{YOUR_PROFILE_NAME_HERE}}` and add into `[env]` section:
 
 ```bash
 # see https://github.com/google/sanitizers/wiki/ThreadSanitizerFlags
-TSAN_OPTIONS="handle_segv=0:disable_coredump=0:abort_on_error=1:report_thread_leaks=0"
+TSAN_OPTIONS=handle_segv=0:disable_coredump=0:abort_on_error=1:report_thread_leaks=0
 
 # NOTE: optional, llvm_9_installer able to set TSAN_SYMBOLIZER_PATH automatically
 # make sure that env. var. TSAN_SYMBOLIZER_PATH points to llvm-symbolizer
@@ -517,11 +581,11 @@ TSAN_OPTIONS="handle_segv=0:disable_coredump=0:abort_on_error=1:report_thread_le
 # echo $TSAN_SYMBOLIZER_PATH
 # TSAN_SYMBOLIZER_PATH=$(find ~/.conan/data/llvm_tools/master/conan/stable/package/ -path "*bin/llvm-symbolizer" | head -n 1)
 
-CFLAGS="-fsanitize=thread -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1  -D_FORTIFY_SOURCE=0 -DTHREAD_SANITIZER=1 -fsanitize=thread -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
 
-CXXFLAGS="-fsanitize=thread -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind"
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1  -D_FORTIFY_SOURCE=0 -DTHREAD_SANITIZER=1 -fsanitize=thread -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
 
-LDFLAGS="-stdlib=libc++ -lc++ -lc++abi -lunwind"
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
 ```
 
 NOTE: Change of options may require rebuild of some deps (`--build=missing`).
@@ -543,11 +607,21 @@ NOTE: you can create blacklist file; see:
 
 ## For contributors - Test libc++ support
 
+Run that test manually before pull request.
+
 Export conan package to local cache.
 
-Create conan profile `~.conan/profiles/clang_with_libcpp_installer` (see above)
+Create conan profile `~.conan/profiles/clang_libcpp` (see above)
 
 ```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOG_RUN_TO_FILE=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
 rm -rf test_package_libcpp/build/
 
 cmake -E time \
@@ -555,13 +629,31 @@ cmake -E time \
   -s build_type=Release \
   -s llvm_9:build_type=Release \
   -o llvm_9_installer:include_what_you_use=True \
-  --profile clang_with_libcpp_installer \
+  --profile clang_libcpp \
   -s compiler=clang \
   -s compiler.version=9 \
   -s compiler.libcxx=libc++
 ```
 
+Example for sanitized builds:
+
+```
+cmake -E time \
+  conan test test_package_libcpp llvm_9_installer/master@conan/stable \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:include_what_you_use=False \
+  -o llvm_9_installer:use_sanitizer="Address;Undefined" \
+  --profile clang_libcpp_asan \
+  -s compiler=clang \
+  -s compiler.version=9 \
+  -s compiler.libcxx=libc++ \
+  -s compiler.sanitizer=AddressUndefinedBehavior
+```
+
 ## For contributors - Test gcc support
+
+Run that test manually before pull request.
 
 Export conan package to local cache.
 
@@ -577,6 +669,7 @@ compiler=gcc
 compiler.version=9
 compiler.libcxx=libstdc++
 build_type=Release
+llvm_9:build_type=Release
 [options]
 [build_requires]
 [env]
@@ -591,50 +684,308 @@ export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
 export GIT_SSL_NO_VERIFY=true
 
-rm -rf test2/build/
-rm -rf local_build_iwyu
+rm -rf test_package_gcc/build/
 
 cmake -E time \
-  conan install . \
-  --install-folder local_build_iwyu \
-  -s build_type=Release \
-  -s llvm_9:build_type=Release \
-  -o llvm_9_installer:include_what_you_use=True \
-  --profile gcc
-
-cmake -E time \
-    conan source . \
-    --source-folder local_build_iwyu \
-    --install-folder local_build_iwyu
-
-conan build . \
-    --build-folder local_build_iwyu \
-    --source-folder local_build_iwyu \
-    --install-folder local_build_iwyu
-
-# remove before `conan export-pkg`
-(CONAN_REVISIONS_ENABLED=1 \
-    conan remove --force llvm_9_installer || true)
-
-conan package . \
-    --build-folder local_build_iwyu \
-    --package-folder local_build_iwyu/package_dir \
-    --source-folder local_build_iwyu \
-    --install-folder local_build_iwyu
-
-conan export-pkg . \
-    conan/stable \
-    --package-folder local_build_iwyu/package_dir \
-    --settings build_type=Release \
-    --force \
-    -s llvm_9:build_type=Release \
-    -o llvm_9_installer:include_what_you_use=True \
-    --profile gcc
-
-cmake -E time \
-  conan test test2 llvm_9_installer/master@conan/stable \
+  conan test test_package_gcc llvm_9_installer/master@conan/stable \
   -s build_type=Release \
   -s llvm_9:build_type=Release \
   -o llvm_9_installer:include_what_you_use=True \
   --profile gcc
 ```
+
+## For contributors - Test ASAN support
+
+Run that test manually before pull request.
+
+Export conan package to local cache.
+
+Build and export llvm conan package with `-o llvm_9:use_sanitizer="Address;Undefined"`
+
+Create conan profile `~.conan/profiles/clang_libcpp_asan`:
+
+```
+[settings]
+# We are building in Ubuntu Linux
+
+os_build=Linux
+os=Linux
+arch_build=x86_64
+arch=x86_64
+
+compiler=clang
+compiler.version=9
+compiler.libcxx=libc++
+
+# enable sanitizer
+compiler.sanitizer=AddressUndefinedBehavior
+
+build_type=Debug
+llvm_9:build_type=Release
+
+[options]
+llvm_9_installer:include_what_you_use=False
+llvm_9:include_what_you_use=True
+llvm_9:use_sanitizer="Address;Undefined"
+
+[build_requires]
+cmake_installer/3.15.5@conan/stable
+llvm_9_installer/master@conan/stable
+
+[env]
+ASAN_OPTIONS=fast_unwind_on_malloc=0:strict_init_order=0:check_initialization_order=false:symbolize=1:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1
+
+UBSAN_OPTIONS=fast_unwind_on_malloc=0:handle_segv=0:disable_coredump=0:halt_on_error=1:print_stacktrace=1:report_error_type=1
+
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DADDRESS_SANITIZER=1 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1  -fPIC -fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-wrapv -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
+
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DADDRESS_SANITIZER=1 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1  -fPIC -fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-wrapv -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr
+
+LDFLAGS=-fno-optimize-sibling-calls -fno-omit-frame-pointer -fno-stack-protector -fno-sanitize-recover=all -fsanitize-recover=unsigned-integer-overflow -fsanitize=address,undefined -shared-libsan -fno-sanitize=nullability-arg -fno-sanitize=nullability-assign -fno-sanitize=nullability-return -fsanitize-trap=undefined -fsanitize=float-divide-by-zero -fno-sanitize=vptr -stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
+```
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOG_RUN_TO_FILE=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package_sanitize/build/
+
+# NOTE: Must FAIL (!!!) with sanitizer error
+# NOTE: If changed to TEST_SANITIZER='san_test_skip' Must pass without error
+TEST_SANITIZER='asan_test_use_after_free' \
+  cmake -E time \
+    conan test test_package_sanitize llvm_9_installer/master@conan/stable \
+    -s build_type=Debug \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:include_what_you_use=False \
+    -o llvm_9_installer:use_sanitizer="Address;Undefined" \
+    --profile clang_libcpp_asan
+```
+
+## For contributors - Test UBSAN support
+
+Run that test manually before pull request.
+
+Export conan package to local cache.
+
+Build and export llvm conan package with `-o llvm_9:use_sanitizer="Address;Undefined"`
+
+Create conan profile `~.conan/profiles/clang_libcpp_ubsan`:
+
+```
+[settings]
+# We are building in Ubuntu Linux
+
+os_build=Linux
+os=Linux
+arch_build=x86_64
+arch=x86_64
+
+compiler=clang
+compiler.version=9
+compiler.libcxx=libc++
+
+# enable sanitizer
+compiler.sanitizer=AddressUndefinedBehavior
+
+build_type=Debug
+llvm_9:build_type=Release
+
+[options]
+llvm_9_installer:include_what_you_use=False
+llvm_9:include_what_you_use=True
+llvm_9:use_sanitizer="Address;Undefined"
+
+[build_requires]
+cmake_installer/3.15.5@conan/stable
+llvm_9_installer/master@conan/stable
+
+[env]
+ASAN_OPTIONS=fast_unwind_on_malloc=0:strict_init_order=0:check_initialization_order=false:symbolize=1:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1
+
+UBSAN_OPTIONS=fast_unwind_on_malloc=0:handle_segv=0:disable_coredump=0:halt_on_error=1:print_stacktrace=1:report_error_type=1
+
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DADDRESS_SANITIZER=1 -fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
+
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DUNDEFINED_SANITIZER=1 -DUNDEFINED_BEHAVIOR_SANITIZER=1 -DADDRESS_SANITIZER=1 -fsanitize=address,undefined -fno-exceptions -DBOOST_EXCEPTION_DISABLE=1 -DBOOST_NO_EXCEPTIONS=1 -DBOOST_USE_ASAN=1 -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
+
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
+```
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOG_RUN_TO_FILE=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package_sanitize/build/
+
+# NOTE: Must FAIL (!!!) with sanitizer error
+# NOTE: If changed to TEST_SANITIZER='san_test_skip' Must pass without error
+TEST_SANITIZER='ubsan_test_signed_overflow' \
+  cmake -E time \
+    conan test test_package_sanitize llvm_9_installer/master@conan/stable \
+    -s build_type=Debug \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:include_what_you_use=False \
+    -o llvm_9_installer:use_sanitizer="Address;Undefined" \
+    --profile clang_libcpp_ubsan
+```
+
+Now you can build and export llvm conan package with desired options
+
+## For contributors - Test TSAN support
+
+Run that test manually before pull request.
+
+Export conan package to local cache.
+
+Build and export llvm conan package with `-o llvm_9:use_sanitizer="Thread"`
+
+Create conan profile `~.conan/profiles/clang_libcpp_tsan`:
+
+```
+[settings]
+# We are building in Ubuntu Linux
+
+os_build=Linux
+os=Linux
+arch_build=x86_64
+arch=x86_64
+
+compiler=clang
+compiler.version=9
+compiler.libcxx=libc++
+
+# enable sanitizer
+compiler.sanitizer=Thread
+
+build_type=Debug
+llvm_9:build_type=Release
+
+[options]
+llvm_9_installer:include_what_you_use=False
+llvm_9:include_what_you_use=True
+llvm_9:use_sanitizer="Thread"
+
+[build_requires]
+cmake_installer/3.15.5@conan/stable
+llvm_9_installer/master@conan/stable
+
+[env]
+TSAN_OPTIONS=handle_segv=0:disable_coredump=0:abort_on_error=1:report_thread_leaks=0
+
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DTHREAD_SANITIZER=1 -fsanitize=thread -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
+
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DTHREAD_SANITIZER=1 -fsanitize=thread -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
+
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
+```
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOG_RUN_TO_FILE=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package_sanitize/build/
+
+# NOTE: Must FAIL (!!!) with sanitizer error
+# NOTE: If changed to TEST_SANITIZER='san_test_skip' Must pass without error
+TEST_SANITIZER='tsan_test_race' \
+  cmake -E time \
+    conan test test_package_sanitize llvm_9_installer/master@conan/stable \
+    -s build_type=Debug \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:include_what_you_use=False \
+    -o llvm_9_installer:use_sanitizer="Thread" \
+    --profile clang_libcpp_tsan
+```
+
+Now you can build and export llvm conan package with desired options
+
+## For contributors - Test MSAN support
+
+Run that test manually before pull request.
+
+Export conan package to local cache.
+
+Build and export llvm conan package with `-o llvm_9:use_sanitizer="MemoryWithOrigins"`
+
+Create conan profile `~.conan/profiles/clang_libcpp_msan`:
+
+```
+[settings]
+# We are building in Ubuntu Linux
+
+os_build=Linux
+os=Linux
+arch_build=x86_64
+arch=x86_64
+
+compiler=clang
+compiler.version=9
+compiler.libcxx=libc++
+
+# enable sanitizer
+compiler.sanitizer=Memory
+
+build_type=Debug
+llvm_9:build_type=Release
+
+[options]
+llvm_9_installer:include_what_you_use=False
+llvm_9:include_what_you_use=True
+llvm_9:use_sanitizer="MemoryWithOrigins"
+
+[build_requires]
+cmake_installer/3.15.5@conan/stable
+llvm_9_installer/master@conan/stable
+
+[env]
+MSAN_OPTIONS=poison_in_dtor=1:fast_unwind_on_malloc=0:check_initialization_order=false:handle_segv=0:detect_leaks=1:detect_stack_use_after_return=1:disable_coredump=0:abort_on_error=1
+
+# NOTE: you can use -fsanitize-memory-track-origins
+CFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DMEMORY_SANITIZER=1 -fsanitize=memory -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
+
+# NOTE: you can use -fsanitize-memory-track-origins
+CXXFLAGS=-DMEMORY_TOOL_REPLACES_ALLOCATOR=1 -D_FORTIFY_SOURCE=0 -DMEMORY_SANITIZER=1 -fsanitize=memory -fuse-ld=lld -stdlib=libc++ -lc++ -lc++abi -lunwind
+
+LDFLAGS=-stdlib=libc++ -lc++ -lc++abi -lunwind -fuse-ld=lld
+```
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOG_RUN_TO_FILE=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package_sanitize/build/
+
+# NOTE: Must FAIL (!!!) with sanitizer error
+# NOTE: If changed to TEST_SANITIZER='san_test_skip' Must pass without error
+TEST_SANITIZER='msan_test_corruption' \
+  cmake -E time \
+    conan test test_package_sanitize llvm_9_installer/master@conan/stable \
+    -s build_type=Debug \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:include_what_you_use=False \
+    -o llvm_9_installer:use_sanitizer="MemoryWithOrigins" \
+    --profile clang_libcpp_msan
+```
+
+Now you can build and export llvm conan package with desired options

@@ -1,16 +1,5 @@
-cmake_minimum_required(VERSION 3.4)
-
 project(test_package)
-
-# do not check compile in conanbuildinfo
-# cause we will switch to other compiler after conan install
-#set(CONAN_DISABLE_CHECK_COMPILER ON)
-#SET(CMAKE_C_COMPILER_WORKS TRUE CACHE INTERNAL "")
-#SET(CMAKE_CXX_COMPILER_WORKS TRUE CACHE INTERNAL "")
-#SET(CMAKE_C_COMPILER_FORCED TRUE CACHE INTERNAL "")
-#SET(CMAKE_CXX_COMPILER_FORCED TRUE CACHE INTERNAL "")
-#SET(CMAKE_C_COMPILER_ID_RUN TRUE CACHE INTERNAL "")
-#SET(CMAKE_CXX_COMPILER_ID_RUN TRUE CACHE INTERNAL "")
+cmake_minimum_required(VERSION 2.8.11)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
@@ -23,10 +12,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/build/") # for conan
 # set(CONAN_DISABLE_CHECK_COMPILER ON)
 # set(CMAKE_C_COMPILER_FORCED TRUE)
 # set(CMAKE_CXX_COMPILER_FORCED TRUE)
-# set(CMAKE_C_COMPILER_WORKS TRUE)
-# set(CMAKE_CXX_COMPILER_WORKS TRUE)
-
-option(HAS_SANITIZERS "HAS_SANITIZERS" OFF)
 
 if(EXISTS "${CMAKE_BINARY_DIR}/conanbuildinfo.cmake")
   list(APPEND CMAKE_MODULE_PATH ${CMAKE_BINARY_DIR}/)
@@ -52,53 +37,31 @@ message(STATUS "CMAKE_THREAD_LIBS_INIT = ${CMAKE_THREAD_LIBS_INIT}")
 
 message(STATUS "CMAKE_DL_LIBS = ${CMAKE_DL_LIBS}")
 
-# We do not test llvm libs (libtooling, etc.) if sanitizers enabled
-if(HAS_SANITIZERS)
-  add_executable(${PROJECT_NAME} test_package_dummy.cpp)
-  target_link_libraries(${PROJECT_NAME} PUBLIC
-    CONAN_PKG::llvm_9_installer
-  )
+find_package( LLVM9 REQUIRED )
+
+add_executable(${PROJECT_NAME} test_package.cpp)
+
+message(STATUS "LLVM_AVAILABLE_LIBS = ${LLVM_AVAILABLE_LIBS}")
+message(STATUS "CLANG_LIBRARIES = ${CLANG_LIBRARIES}")
+message(STATUS "LLD_LIBRARIES = ${LLD_LIBRARIES}")
+message(STATUS "LLVM_LIBRARIES = ${LLVM_LIBRARIES}")
+
+if(LLVM_BINARY_DIR)
+  message(STATUS "LLVM_BINARY_DIR: ${LLVM_BINARY_DIR}")
 else()
-  add_executable(${PROJECT_NAME} test_package_libtooling.cpp)
-
-  find_package( LLVM9 REQUIRED )
-
-  target_include_directories(${PROJECT_NAME} PUBLIC
-    ${LLVM_INCLUDE_DIRS}
-    ${CLANG_INCLUDE_DIRS}
-    ${CONAN_INCLUDE_DIRS_LLVM_9}
-  )
-
-  target_link_directories(${PROJECT_NAME} PUBLIC
-    ${CONAN_LIB_DIRS_LLVM_9}
-  )
-
-  message(STATUS "LLVM_AVAILABLE_LIBS = ${LLVM_AVAILABLE_LIBS}")
-  message(STATUS "CLANG_LIBRARIES = ${CLANG_LIBRARIES}")
-  message(STATUS "LLD_LIBRARIES = ${LLD_LIBRARIES}")
-  message(STATUS "LLVM_LIBRARIES = ${LLVM_LIBRARIES}")
-
-  target_link_libraries(${PROJECT_NAME} PUBLIC
-    CONAN_PKG::llvm_9
-    CONAN_PKG::llvm_9_installer
-  )
-
-  if(LLVM_BINARY_DIR)
-    message(STATUS "LLVM_BINARY_DIR: ${LLVM_BINARY_DIR}")
-  else()
-    message(FATAL_ERROR "LLVM_BINARY_DIR not found: ${LLVM_BINARY_DIR}")
-  endif()
-
-  target_compile_definitions(${PROJECT_NAME} PRIVATE
-    LLVMDIR="${LLVM_BINARY_DIR}"
-  )
+  message(FATAL_ERROR "LLVM_BINARY_DIR not found: ${LLVM_BINARY_DIR}")
 endif()
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+  LLVMDIR="${LLVM_BINARY_DIR}"
+)
 
 # POSITION_INDEPENDENT_CODE for -fPIC
 set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
   ${CMAKE_THREAD_LIBS_INIT}
+  CONAN_PKG::llvm_9_installer
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE

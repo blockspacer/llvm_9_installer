@@ -1,3 +1,11 @@
+#if defined(UNDEFINED_SANITIZER) \
+    || defined(ADRESS_SANITIZER) \
+    || defined(UNDEFINED_BEHAVIOR_SANITIZER) \
+    || defined(MEMORY_SANITIZER) \
+    || defined(THREAD_SANITIZER)
+#error \"sanitizers not supported with libtooling\"
+#endif
+
 #include <cstdlib>
 #include <iostream>
 #include <iterator>
