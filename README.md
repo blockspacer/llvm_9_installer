@@ -72,29 +72,59 @@ How to build and install `conan_llvm_9`: https://github.com/blockspacer/conan_ll
 
 `llvm_9_installer` is wrapper around `conan_llvm_9`
 
+## NOTE: `llvm_9_installer` options must match `llvm_9` options
+
+If you build code with `llvm_9_installer:use_sanitizer=Thread`,
+than you need to build LLVM with `llvm_9:use_sanitizer=Thread`
+
+If you build code with `llvm_9_installer:link_with_llvm_libs=True`,
+than you need to build LLVM with `llvm_9:link_with_llvm_libs=False`
+
+etc.
+
+See `llvm_9_options` in `conanfile.py` to detect options that are shared between `llvm_9` and `llvm_9_installer`
+
+Some options unique used only by `llvm_9_installer`.
+For example, if you build code with `llvm_9_installer:link_libcxx=False`,
+than you do not need to re-build LLVM (`llvm_9` does not have `link_libcxx` option)
+
+## How to avoid `llvm_9` re-builds per each change in options
+
+Imagine that you work on multiple projects and need to store at the same time `llvm_9`
+package with shared linkage, with static linkage, with sanitizers, without sanitizers, etc.
+
+If you need to use multiple `llvm_9` versions with different options at same time,
+than you can change `BUILD_NUMBER` env. var. during `llvm_9` build, example:
+`BUILD_NUMBER=-static-sanitized conan export-pkg . my_channel/release`
+and change env. vars during `llvm_9_installer` build:
+* LLVM_9_PKG_NAME - defaults to "llvm_9"
+* LLVM_9_PKG_VER - defaults to "master"
+* LLVM_9_PKG_CHANNEL - defaults to "conan/stable"
+
 ## Build and install
 
 Conan profile (in `~/.conan/profiles`) must use same CXX ABI as used LLVM libs, example profile:
 
+Create clang9 profile:
+
 ```bash
 [settings]
-# We are building in Ubuntu Linux
-
 os_build=Linux
 os=Linux
 arch_build=x86_64
 arch=x86_64
 
 compiler=clang
-compiler.version=10
-compiler.libcxx=libstdc++11
+compiler.version=9
+compiler.libcxx=libc++
 
-[env]
-CC=/usr/bin/clang-10
-CXX=/usr/bin/clang++-10
+llvm_9:build_type=Release
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+
+[options]
+llvm_9_installer:compile_with_clang=True
 ```
 
 ```bash
@@ -113,8 +143,9 @@ cmake -E time \
   --install-folder local_build_iwyu \
   -s build_type=Release \
   -s llvm_9:build_type=Release \
-  -o llvm_9_installer:include_what_you_use=True \
-  --profile clang
+  -o llvm_9_installer:compile_with_clang=True \
+  -o llvm_9_installer:link_libcxx=False \
+  --profile clang9
 
 cmake -E time \
     conan source . \
@@ -142,27 +173,114 @@ conan export-pkg . \
     --settings build_type=Release \
     --force \
     -s llvm_9:build_type=Release \
-    -o llvm_9_installer:include_what_you_use=True \
-    --profile clang
+    -o llvm_9_installer:compile_with_clang=True \
+    -o llvm_9_installer:link_libcxx=False \
+    --profile clang9
 
 cmake -E time \
   conan test test_package llvm_9_installer/master@conan/stable \
   -s build_type=Release \
   -s llvm_9:build_type=Release \
-  -o llvm_9_installer:include_what_you_use=True \
-  --profile clang
+  -o llvm_9_installer:compile_with_clang=True \
+  -o llvm_9_installer:link_libcxx=False \
+  --profile clang9
 
 rm -rf local_build_iwyu/package_dir
 ```
 
-## Usage
+## How to build with LLVM libs support.
+
+LLVM libs support - For example, `LibTooling` can be used to parse source code.
+
+Create gcc_cxx11abi profile:
+
+```bash
+[settings]
+os=Linux
+os_build=Linux
+arch=x86_64
+arch_build=x86_64
+compiler=gcc
+compiler.version=9
+compiler.libcxx=libstdc++
+build_type=Release
+
+[options]
+llvm_9_installer:compile_with_clang=False
+llvm_9_installer:link_libcxx=False
+llvm_9_installer:link_with_llvm_libs=True
+```
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package/build/
+rm -rf local_build_iwyu
+
+cmake -E time \
+  conan install . \
+  --install-folder local_build_iwyu \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:compile_with_clang=False \
+  -o llvm_9_installer:link_libcxx=False \
+  -o llvm_9_installer:link_with_llvm_libs=True \
+  --profile gcc
+
+cmake -E time \
+    conan source . \
+    --source-folder local_build_iwyu \
+    --install-folder local_build_iwyu
+
+conan build . \
+    --build-folder local_build_iwyu \
+    --source-folder local_build_iwyu \
+    --install-folder local_build_iwyu
+
+# remove before `conan export-pkg`
+(CONAN_REVISIONS_ENABLED=1 \
+    conan remove --force llvm_9_installer || true)
+
+conan package . \
+    --build-folder local_build_iwyu \
+    --package-folder local_build_iwyu/package_dir \
+    --source-folder local_build_iwyu \
+    --install-folder local_build_iwyu
+
+conan export-pkg . \
+    conan/stable \
+    --package-folder local_build_iwyu/package_dir \
+    --settings build_type=Release \
+    --force \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:compile_with_clang=False \
+    -o llvm_9_installer:link_libcxx=False \
+    -o llvm_9_installer:link_with_llvm_libs=True \
+    --profile gcc
+
+cmake -E time \
+  conan test test_package llvm_9_installer/master@conan/stable \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:compile_with_clang=False \
+  -o llvm_9_installer:link_libcxx=False \
+  -o llvm_9_installer:link_with_llvm_libs=True \
+  --profile gcc
+
+rm -rf local_build_iwyu/package_dir
+```
+
+## Usage with libc++ (link_libcxx=True)
 
 Create conan profile `~.conan/profiles/clang_libcpp`:
 
 ```bash
 [settings]
-# We are building in Ubuntu Linux
-
 os_build=Linux
 os=Linux
 arch_build=x86_64
@@ -176,7 +294,7 @@ build_type=Release
 llvm_9:build_type=Release
 
 [options]
-llvm_9_installer:include_what_you_use=True
+llvm_9_installer:link_libcxx=True
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
@@ -628,7 +746,6 @@ cmake -E time \
   conan test test_package_libcpp llvm_9_installer/master@conan/stable \
   -s build_type=Release \
   -s llvm_9:build_type=Release \
-  -o llvm_9_installer:include_what_you_use=True \
   --profile clang_libcpp \
   -s compiler=clang \
   -s compiler.version=9 \
@@ -690,7 +807,6 @@ cmake -E time \
   conan test test_package_gcc llvm_9_installer/master@conan/stable \
   -s build_type=Release \
   -s llvm_9:build_type=Release \
-  -o llvm_9_installer:include_what_you_use=True \
   --profile gcc
 ```
 
@@ -725,7 +841,7 @@ llvm_9:build_type=Release
 
 [options]
 llvm_9_installer:include_what_you_use=False
-llvm_9:include_what_you_use=True
+llvm_9:include_what_you_use=False
 llvm_9:use_sanitizer="Address;Undefined"
 
 [build_requires]
@@ -798,7 +914,7 @@ llvm_9:build_type=Release
 
 [options]
 llvm_9_installer:include_what_you_use=False
-llvm_9:include_what_you_use=True
+llvm_9:include_what_you_use=False
 llvm_9:use_sanitizer="Address;Undefined"
 
 [build_requires]
@@ -873,7 +989,7 @@ llvm_9:build_type=Release
 
 [options]
 llvm_9_installer:include_what_you_use=False
-llvm_9:include_what_you_use=True
+llvm_9:include_what_you_use=False
 llvm_9:use_sanitizer="Thread"
 
 [build_requires]
@@ -946,7 +1062,7 @@ llvm_9:build_type=Release
 
 [options]
 llvm_9_installer:include_what_you_use=False
-llvm_9:include_what_you_use=True
+llvm_9:include_what_you_use=False
 llvm_9:use_sanitizer="MemoryWithOrigins"
 
 [build_requires]

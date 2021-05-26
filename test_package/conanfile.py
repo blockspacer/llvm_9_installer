@@ -30,7 +30,9 @@ class TestPackageConan(ConanFile):
           cmake = CMake(self)
           cmake.parallel = True
           cmake.verbose = True
+          cmake.definitions["LINKS_LIBCXX"] = "ON" if self.options["llvm_9_installer"].link_libcxx else "OFF"
           cmake.definitions["HAS_SANITIZERS"] = "ON" if self._has_sanitizers else "OFF"
+          cmake.definitions["LINKS_LLVM_LIBS"] = "ON" if self.options["llvm_9_installer"].link_with_llvm_libs else "OFF"
           #cmake.definitions["CONAN_DISABLE_CHECK_COMPILER"] = "ON"
           #cmake.definitions["CMAKE_CXX_COMPILER_ID"] = ""
           #cmake.definitions["CMAKE_C_COMPILER_ID"] = ""
@@ -70,10 +72,10 @@ class TestPackageConan(ConanFile):
             #extra_flags.append("-lunwind")
             extra_flags.append("-I\"{}/include/c++/v1\"".format(llvm_root))
             extra_flags.append("-isystem\"{}/include\"".format(llvm_root))
-            extra_flags.append("-isystem\"{}/lib/clang/9.0.1/include\"".format(llvm_root))
+            extra_flags.append("-isystem\"{}/lib/clang/9.0.0/include\"".format(llvm_root))
             #extra_flags.append("-L{}/lib".format(llvm_root))
             #extra_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
-            extra_flags.append("-resource-dir\"={}/lib/clang/9.0.1\"".format(llvm_root))
+            extra_flags.append("-resource-dir\"={}/lib/clang/9.0.0\"".format(llvm_root))
 
             # test that libtooling can parse source file
             self.run(command=bin_path \

@@ -27,6 +27,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/build/") # for conan
 # set(CMAKE_CXX_COMPILER_WORKS TRUE)
 
 option(HAS_SANITIZERS "HAS_SANITIZERS" OFF)
+option(LINKS_LIBCXX "LINKS_LIBCXX" OFF)
+option(LINKS_LLVM_LIBS "LINKS_LLVM_LIBS" OFF)
 
 if(EXISTS "${CMAKE_BINARY_DIR}/conanbuildinfo.cmake")
   list(APPEND CMAKE_MODULE_PATH ${CMAKE_BINARY_DIR}/)
@@ -53,7 +55,8 @@ message(STATUS "CMAKE_THREAD_LIBS_INIT = ${CMAKE_THREAD_LIBS_INIT}")
 message(STATUS "CMAKE_DL_LIBS = ${CMAKE_DL_LIBS}")
 
 # We do not test llvm libs (libtooling, etc.) if sanitizers enabled
-if(HAS_SANITIZERS)
+# or if -stdlib is libc++
+if(NOT LINKS_LLVM_LIBS)
   add_executable(${PROJECT_NAME} test_package_dummy.cpp)
   target_link_libraries(${PROJECT_NAME} PUBLIC
     CONAN_PKG::llvm_9_installer
