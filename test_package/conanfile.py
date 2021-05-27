@@ -3,7 +3,7 @@ import os
 
 class TestPackageConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
-    generators = "cmake"
+    generators = "cmake", "cmake_find_package", "cmake_paths"
 
     @property
     def _has_sanitizers(self):
@@ -15,6 +15,14 @@ class TestPackageConan(ConanFile):
     #       self.requires["llvm_9_installer"].ref.version, \
     #       self.requires["llvm_9_installer"].ref.user, \
     #       self.requires["llvm_9_installer"].ref.channel))
+    #
+    # def requirements(self):
+    #     self.output.info("requirements")
+    #
+    #     self.requires("{}/{}@{}".format( \
+    #       os.getenv("LLVM_9_PKG_NAME", "llvm_9"), \
+    #       os.getenv("LLVM_9_PKG_VER", "master"), \
+    #       os.getenv("LLVM_9_PKG_CHANNEL", "conan/stable")))
 
     def build(self):
 
@@ -26,24 +34,30 @@ class TestPackageConan(ConanFile):
         #self.old_env = dict(os.environ)
 
         # see https://github.com/conan-io/conan/issues/1858
-        with tools.environment_append(RunEnvironment(self).vars):
-          cmake = CMake(self)
-          cmake.parallel = True
-          cmake.verbose = True
-          cmake.definitions["LINKS_LIBCXX"] = "ON" if self.options["llvm_9_installer"].link_libcxx else "OFF"
-          cmake.definitions["HAS_SANITIZERS"] = "ON" if self._has_sanitizers else "OFF"
-          cmake.definitions["LINKS_LLVM_LIBS"] = "ON" if self.options["llvm_9_installer"].link_with_llvm_libs else "OFF"
-          #cmake.definitions["CONAN_DISABLE_CHECK_COMPILER"] = "ON"
-          #cmake.definitions["CMAKE_CXX_COMPILER_ID"] = ""
-          #cmake.definitions["CMAKE_C_COMPILER_ID"] = ""
-          #cmake.definitions["CMAKE_C_COMPILER_WORKS"] = ""
-          #cmake.definitions["CMAKE_CXX_COMPILER_WORKS"] = ""
-          #cmake.definitions["CMAKE_C_COMPILER_FORCED"] = ""
-          #cmake.definitions["CMAKE_CXX_COMPILER_FORCED"] = ""
-          #cmake.definitions["CMAKE_C_COMPILER_ID_RUN"] = ""
-          #cmake.definitions["CMAKE_CXX_COMPILER_ID_RUN"] = ""
-          cmake.configure()
-          cmake.build()
+        # env = tools.environment_append(RunEnvironment(self).vars)
+        # deps_env = self.deps_cpp_info["llvm_9_installer"].components["clang_compiler"].env_info
+        # with tools.environment_append(deps_env):
+
+        cmake = CMake(self)
+        cmake.parallel = True
+        cmake.verbose = True
+        cmake.definitions["LINKS_LIBCXX"] = "ON" \
+          if self.options["llvm_9_installer"].link_libcxx else "OFF"
+        cmake.definitions["HAS_SANITIZERS"] = "ON" \
+          if self._has_sanitizers else "OFF"
+        cmake.definitions["LINKS_LLVM_LIBS"] = "ON" \
+          if self.options["llvm_9_installer"].link_with_llvm_libs else "OFF"
+        #cmake.definitions["CONAN_DISABLE_CHECK_COMPILER"] = "ON"
+        #cmake.definitions["CMAKE_CXX_COMPILER_ID"] = ""
+        #cmake.definitions["CMAKE_C_COMPILER_ID"] = ""
+        #cmake.definitions["CMAKE_C_COMPILER_WORKS"] = ""
+        #cmake.definitions["CMAKE_CXX_COMPILER_WORKS"] = ""
+        #cmake.definitions["CMAKE_C_COMPILER_FORCED"] = ""
+        #cmake.definitions["CMAKE_CXX_COMPILER_FORCED"] = ""
+        #cmake.definitions["CMAKE_C_COMPILER_ID_RUN"] = ""
+        #cmake.definitions["CMAKE_CXX_COMPILER_ID_RUN"] = ""
+        cmake.configure()
+        cmake.build()
 
         #os.environ.clear()
         #os.environ.update(self.old_env)
@@ -72,10 +86,10 @@ class TestPackageConan(ConanFile):
             #extra_flags.append("-lunwind")
             extra_flags.append("-I\"{}/include/c++/v1\"".format(llvm_root))
             extra_flags.append("-isystem\"{}/include\"".format(llvm_root))
-            extra_flags.append("-isystem\"{}/lib/clang/9.0.0/include\"".format(llvm_root))
+            extra_flags.append("-isystem\"{}/lib/clang/9.0.1/include\"".format(llvm_root))
             #extra_flags.append("-L{}/lib".format(llvm_root))
             #extra_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
-            extra_flags.append("-resource-dir\"={}/lib/clang/9.0.0\"".format(llvm_root))
+            extra_flags.append("-resource-dir\"={}/lib/clang/9.0.1\"".format(llvm_root))
 
             # test that libtooling can parse source file
             self.run(command=bin_path \

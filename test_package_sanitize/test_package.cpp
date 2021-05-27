@@ -87,8 +87,12 @@ int main(int argc, const char **argv) {
     std::cerr << "tsan_test_race: " << Global << std::endl;
   }
   else if (env_param == "msan_test_corruption") {
-    int x[10]; // uninitialized
-    std::cerr << "msan_test_corruption: " << x[0] << std::endl;
+    int* a = new int[10];
+    a[5] = 0;
+    volatile int b = a[argc];
+    if (b)
+      printf("xx\n");
+    std::cerr << "msan_test_corruption: " << a[1] << std::endl;
   }
   else {
     std::cerr << "Unknown env. param: " << "TEST_SANITIZER" << std::endl;

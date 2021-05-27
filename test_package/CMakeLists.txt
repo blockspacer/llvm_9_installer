@@ -45,12 +45,21 @@ else()
   message (FATAL_ERROR "must use conan")
 endif()
 
+if(NOT TARGET CONAN_PKG::llvm_9)
+  message(FATAL_ERROR "Use CONAN_PKG::llvm_9 from conan")
+endif()
+
+message (STATUS "CONAN_LLVM_9_ROOT=${CONAN_LLVM_9_ROOT}")
+message (STATUS "CONAN_LIB_DIRS_LLVM_9=${CONAN_LIB_DIRS_LLVM_9}")
+message (STATUS "CONAN_BUILD_DIRS_LLVM_9=${CONAN_BUILD_DIRS_LLVM_9}")
+message (STATUS "CONAN_INCLUDE_DIRS_LLVM_9=${CONAN_INCLUDE_DIRS_LLVM_9}")
+message (STATUS "CONAN_BIN_DIRS_LLVM_9=${CONAN_BIN_DIRS_LLVM_9}")
+
 if(NOT TARGET CONAN_PKG::llvm_9_installer)
   message(FATAL_ERROR "Use CONAN_PKG::llvm_9_installer from conan")
 endif()
 
 find_package( Threads REQUIRED )
-message(STATUS "CMAKE_THREAD_LIBS_INIT = ${CMAKE_THREAD_LIBS_INIT}")
 
 message(STATUS "CMAKE_DL_LIBS = ${CMAKE_DL_LIBS}")
 
@@ -82,9 +91,19 @@ else()
   message(STATUS "LLVM_LIBRARIES = ${LLVM_LIBRARIES}")
 
   target_link_libraries(${PROJECT_NAME} PUBLIC
-    CONAN_PKG::llvm_9
+    llvm_9::llvm_9
+    #llvm_9::llvm_core
+    #llvm_9::clang_core
     CONAN_PKG::llvm_9_installer
   )
+
+  find_package(llvm_9 REQUIRED)
+
+  if(NOT TARGET CONAN_PKG::llvm_9)
+    message(FATAL_ERROR "Use CONAN_PKG::llvm_9 from conan")
+  endif()
+
+  #find_library(CONAN_LIB::llvm_9_llvm_tools REQUIRED)
 
   if(LLVM_BINARY_DIR)
     message(STATUS "LLVM_BINARY_DIR: ${LLVM_BINARY_DIR}")
@@ -101,7 +120,8 @@ endif()
 set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
-  ${CMAKE_THREAD_LIBS_INIT}
+  Threads::Threads
+  ${CMAKE_DL_LIBS}
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE

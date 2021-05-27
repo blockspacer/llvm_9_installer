@@ -144,10 +144,26 @@ class Clang9InstallerConan(ConanFile):
     repo_url = 'https://github.com/blockspacer/llvm_9_installer.git'
     license = "MIT"
     exports_sources = ["LICENSE.md"]
-    generators = "cmake"
+    generators = 'cmake_find_package', "cmake", "cmake_paths"
+
+    # always - The package will be built always,
+    # retrieving each time the source code executing the source method.
+    # The always policy will retrieve the sources
+    # each time the package is installed,
+    # so it can be useful for providing a “latest” mechanism
+    # or ignoring the uploaded binary packages.
+    build_policy = "always"
+
     short_paths = True
     settings = "os_build", "build_type", "arch_build", "compiler", "arch"
 
+    # Allows to enforce default options for `llvm_9` dependency
+    # and check that wrapper package (`llvm_9_installer`) uses same set of options
+    # as `llvm_9` dependency (because different sets of options must not collide).
+    # 'ANY' means use same default value as in `llvm_9` dependency
+    #
+    # For example, if you set `llvm_9_installer:include_what_you_use=False`,
+    # than `llvm_9:include_what_you_use=False` will be set automatically
     llvm_9_options = {
       **{
         'with_' + library : library in default_llvm_libs for library in llvm_libs },
@@ -157,23 +173,28 @@ class Clang9InstallerConan(ConanFile):
         'with_' + target : target in default_llvm_targets for target in llvm_targets },
       **{
         'use_sanitizer': 'None',
-        'lto': 'Off',
-        'exceptions': False,
-        'threads': True,
-        'unwind_tables': True,
-        'fPIC': True,
-        'shared': True,
-        'rtti': False,
-        'libffi': False,
-        'libz': True,
-        "include_what_you_use": True,
+        'lto': 'ANY', # no default value
+        'exceptions': 'ANY', # no default value
+        'threads': 'ANY', # no default value
+        'unwind_tables': 'ANY', # no default value
+        'fPIC': 'ANY', # no default value
+        'shared': 'ANY', # no default value
+        'rtti': 'ANY', # no default value
+        'libffi': 'ANY', # no default value
+        'libz': 'ANY', # no default value
+        "include_what_you_use": 'ANY', # no default value
+        "add_to_builddirs": 'ANY', # no default value
+        "add_to_libdirs": 'ANY', # no default value
+        "add_to_bindirs": 'ANY', # no default value
+        "add_to_system_libs": 'ANY', # no default value
+        "add_to_includedirs": 'ANY', # no default value
         # If `True` than will add 'LLVMCore', 'LLVMAnalysis', 'LLVMSupport',
         # 'clangAST', 'clangTooling', etc. into `self.cpp_info.libs`
         "link_with_llvm_libs": False
     }}
 
     options = {
-      **dict([(key, 'ANY') for key in llvm_9_options.keys()]),
+      **dict([(key, 'ANY') for (key, value) in llvm_9_options.items()]),
       **{
         # Will set `-stdlib=libc++` if `True`
         'link_libcxx': [True, False],
@@ -182,7 +203,7 @@ class Clang9InstallerConan(ConanFile):
     }}
 
     default_options = {
-      **llvm_9_options,
+      **dict([(key, value) for (key, value) in llvm_9_options.items()]),
       **{
         'link_libcxx': True,
         'compile_with_clang': True,
@@ -196,13 +217,17 @@ class Clang9InstallerConan(ConanFile):
         for key in dependency_options_dict.keys():
           if (not key in options_dict.keys()):
             raise ConanInvalidConfiguration(str(key) + " must be in options")
-          setattr(self.options[dependency_name], key, getattr(self.options, key))
+          # 'ANY' - no default value
+          if getattr(self.options, key) != 'ANY':
+            setattr(self.options[dependency_name], key, getattr(self.options, key))
 
     # during package step we can check populated dependency options
     # and validate that we did not forget about some dependency option
     def check_options_same(self, dependency_name, dependency_options_dict):
-        for key in self.options[dependency_name].keys():
-          if (not key in dependency_options_dict.keys()):
+        for key, value in self.options[dependency_name].items():
+          # 'ANY' - no default value
+          if (getattr(self.options, key) != 'ANY' \
+            and not key in dependency_options_dict.keys()):
             raise ConanInvalidConfiguration(str(key) + " must be in llvm_9_options")
 
     # config_options() is used to configure or constraint the available options
@@ -277,16 +302,37 @@ class Clang9InstallerConan(ConanFile):
     def package_info(self):
         self.output.info("package_info")
 
-        cxxflags = []
-        cflags = []
-        ldflags = []
-        common_build_flags = []
-        common_link_flags = []
+        #cxxflags = []
+        #cflags = []
+        #ldflags = []
+        #common_build_flags = []
+        #common_link_flags = []
+
+        # llvm_core clang_core llvm_tools
+        self.cpp_info.components["libcxx"].names["cmake_find_package"] = "libcxx"
+        self.cpp_info.components["libcxx"].names["cmake_find_package_multi"] = "libcxx"
+        self.cpp_info.components["libcxx"].requires = ["llvm_9::llvm_9"]
+        if self.options["llvm_9"].add_to_includedirs:
+          self.cpp_info.components["libcxx"].requires.extend(["llvm_9::includedirs"])
+        if self.options["llvm_9"].add_to_libdirs:
+          self.cpp_info.components["libcxx"].requires.extend(["llvm_9::libdirs"])
+
+        self.cpp_info.components["libclang_rt"].names["cmake_find_package"] = "libclang_rt"
+        self.cpp_info.components["libclang_rt"].names["cmake_find_package_multi"] = "libclang_rt"
+        self.cpp_info.components["libclang_rt"].requires = ["llvm_9::llvm_9"]
+        if self.options["llvm_9"].link_with_llvm_libs:
+          self.cpp_info.components["libclang_rt"].requires.extend(["llvm_9::clang_core", "llvm_9::llvm_core"])
+
+        self.cpp_info.components["clang_compiler"].names["cmake_find_package"] = "clang_compiler"
+        self.cpp_info.components["clang_compiler"].names["cmake_find_package_multi"] = "llvm_tools"
+        self.cpp_info.components["clang_compiler"].requires = ["llvm_9::llvm_9"]
+        if self.options["llvm_9"].add_to_bindirs:
+          self.cpp_info.components["clang_compiler"].requires.extend(["llvm_9::llvm_tools", "llvm_9::bindirs"])
 
         llvm_root = self.deps_cpp_info["llvm_9"].rootpath
         self.env_info.LLVM_NORMPATH = os.path.normpath(llvm_root)
         self.output.info("llvm_9 rootpath: {}".format(llvm_root))
-
+        #
         self.env_info.IWYU_PATH = os.path.join(llvm_root, "bin", "include-what-you-use")
         self.env_info.CLANG_FORMAT_PATH = os.path.join(llvm_root, "bin", "clang-format")
         self.env_info.SCAN_BUILD_PATH = os.path.join(llvm_root, "bin", "scan-build")
@@ -297,102 +343,128 @@ class Clang9InstallerConan(ConanFile):
 
         if self.options.link_libcxx:
           for path in self.deps_cpp_info.res_paths:
-              self.cpp_info.resdirs.append(path)
+              self.cpp_info.components["libcxx"].resdirs.append(path)
 
         if self.options.link_libcxx:
-          self.cpp_info.includedirs.append(llvm_root)
-          self.cpp_info.includedirs.append(os.path.join(llvm_root, "include"))
+          self.cpp_info.components["libcxx"].includedirs.append(llvm_root)
+          self.cpp_info.components["libcxx"].includedirs.append(os.path.join(llvm_root, "include"))
           for path in self.deps_cpp_info.include_paths:
-              self.cpp_info.includedirs.append(path)
+              self.cpp_info.components["libcxx"].includedirs.append(path)
 
         if self.options.link_libcxx:
           self.env_info.LD_LIBRARY_PATH.append(os.path.join(llvm_root, "lib"))
           for path in self.deps_cpp_info.lib_paths:
               self.env_info.LD_LIBRARY_PATH.append(path)
-
-        self.env_info.PATH.append(os.path.join(llvm_root, "bin"))
-        self.env_info.PATH.append(os.path.join(llvm_root, "libexec"))
-        for path in self.deps_cpp_info.bin_paths:
-            self.env_info.PATH.append(path)
-
+        #
+        # self.env_info.PATH.append(os.path.join(llvm_root, "bin"))
+        # self.env_info.PATH.append(os.path.join(llvm_root, "libexec"))
+        # for path in self.deps_cpp_info.bin_paths:
+        #     self.env_info.PATH.append(path)
+        #
         if self.options.compile_with_clang:
           # see https://docs.conan.io/en/latest/systems_cross_building/cross_building.html
           # and https://www.gnu.org/software/make/manual/html_node/Implicit-Variables.html
-          self.env_info.CXX = os.path.join(llvm_root, "bin", "clang++")
-          if not os.path.exists(self.env_info.CXX):
-            raise Exception("Unable to find path: {}".format(self.env_info.CXX))
+          CXX = os.path.join(llvm_root, "bin", "clang++")
+          if not os.path.exists(CXX):
+            raise Exception("Unable to find path: {}".format(CXX))
+          self.env_info.CXX = CXX
 
-          self.env_info.CC = os.path.join(llvm_root, "bin", "clang")
-          if not os.path.exists(self.env_info.CC):
-            raise Exception("Unable to find path: {}".format(self.env_info.CC))
+          CC = os.path.join(llvm_root, "bin", "clang")
+          if not os.path.exists(CC):
+            raise Exception("Unable to find path: {}".format(CC))
+          self.env_info.CC = CC
 
           # TODO: use llvm-ar or llvm-lib?
-          self.env_info.AR = os.path.join(llvm_root, "bin", "llvm-ar")
-          if not os.path.exists(self.env_info.AR):
-            raise Exception("Unable to find path: {}".format(self.env_info.AR))
+          AR = os.path.join(llvm_root, "bin", "llvm-ar")
+          if not os.path.exists(AR):
+            raise Exception("Unable to find path: {}".format(AR))
+          self.env_info.AR = AR
 
-          self.env_info.STRIP = os.path.join(llvm_root, "bin", "llvm-strip")
-          if not os.path.exists(self.env_info.STRIP):
-            raise Exception("Unable to find path: {}".format(self.env_info.STRIP))
+          STRIP = os.path.join(llvm_root, "bin", "llvm-strip")
+          if not os.path.exists(STRIP):
+            raise Exception("Unable to find path: {}".format(STRIP))
+          self.env_info.STRIP = STRIP
 
           # TODO: use lld-link or ld.lld?
           # NOTE: llvm-ld replaced by llvm-ld
-          self.env_info.LD = os.path.join(llvm_root, "bin", "ld.lld")
-          if not os.path.exists(self.env_info.LD):
-            raise Exception("Unable to find path: {}".format(self.env_info.LD))
+          LD = os.path.join(llvm_root, "bin", "ld.lld")
+          if not os.path.exists(LD):
+            raise Exception("Unable to find path: {}".format(LD))
+          self.env_info.LD = LD
 
-          self.env_info.NM = os.path.join(llvm_root, "bin", "llvm-nm")
-          if not os.path.exists(self.env_info.NM):
-            raise Exception("Unable to find path: {}".format(self.env_info.NM))
+          NM = os.path.join(llvm_root, "bin", "llvm-nm")
+          if not os.path.exists(NM):
+            raise Exception("Unable to find path: {}".format(NM))
+          self.env_info.NM = NM
 
-          self.env_info.LLVM_CONFIG_PATH = os.path.join(llvm_root, "bin", "llvm-config")
-          if not os.path.exists(self.env_info.LLVM_CONFIG_PATH):
-            raise Exception("Unable to find path: {}".format(self.env_info.LLVM_CONFIG_PATH))
+          LLVM_CONFIG_PATH = os.path.join(llvm_root, "bin", "llvm-config")
+          if not os.path.exists(LLVM_CONFIG_PATH):
+            raise Exception("Unable to find path: {}".format(LLVM_CONFIG_PATH))
+          self.env_info.LLVM_CONFIG_PATH = LLVM_CONFIG_PATH
 
           # TODO: propagate to CMAKE_OBJDUMP?
-          self.env_info.OBJDUMP = os.path.join(llvm_root, "bin", "llvm-objdump")
-          if not os.path.exists(self.env_info.OBJDUMP):
-            raise Exception("Unable to find path: {}".format(self.env_info.OBJDUMP))
+          OBJDUMP = os.path.join(llvm_root, "bin", "llvm-objdump")
+          if not os.path.exists(OBJDUMP):
+            raise Exception("Unable to find path: {}".format(OBJDUMP))
+          self.env_info.OBJDUMP = OBJDUMP
 
-          self.env_info.SYMBOLIZER = os.path.join(llvm_root, "bin", "llvm-symbolizer")
-          if not os.path.exists(self.env_info.SYMBOLIZER):
-            raise Exception("Unable to find path: {}".format(self.env_info.SYMBOLIZER))
+          SYMBOLIZER = os.path.join(llvm_root, "bin", "llvm-symbolizer")
+          if not os.path.exists(SYMBOLIZER):
+            raise Exception("Unable to find path: {}".format(SYMBOLIZER))
+          self.env_info.SYMBOLIZER = SYMBOLIZER
 
-          self.env_info.RANLIB = os.path.join(llvm_root, "bin", "llvm-ranlib")
-          if not os.path.exists(self.env_info.RANLIB):
-            raise Exception("Unable to find path: {}".format(self.env_info.RANLIB))
+          RANLIB = os.path.join(llvm_root, "bin", "llvm-ranlib")
+          if not os.path.exists(RANLIB):
+            raise Exception("Unable to find path: {}".format(RANLIB))
+          self.env_info.RANLIB = RANLIB
 
           # TODO: use llvm-as or clang?
-          self.env_info.AS = os.path.join(llvm_root, "bin", "llvm-as")
-          if not os.path.exists(self.env_info.STRIP):
-            raise Exception("Unable to find path: {}".format(self.env_info.AS))
+          AS = os.path.join(llvm_root, "bin", "llvm-as")
+          if not os.path.exists(STRIP):
+            raise Exception("Unable to find path: {}".format(AS))
+          self.env_info.AS = AS
 
           # TODO: use llvm-rc-rc or llvm-rc
-          self.env_info.RC = os.path.join(llvm_root, "bin", "llvm-rc")
-          if not os.path.exists(self.env_info.RC):
-            raise Exception("Unable to find path: {}".format(self.env_info.RC))
+          RC = os.path.join(llvm_root, "bin", "llvm-rc")
+          if not os.path.exists(RC):
+            raise Exception("Unable to find path: {}".format(RC))
+          self.env_info.RC = RC
 
         # Preaload libs or add to
-        # LD_PRELOAD=.../lib/clang/9.0.0/lib/x86_64-unknown-linux-gnu/libclang_rt.asan.so
+        # LD_PRELOAD=.../lib/clang/9.0.1/lib/x86_64-unknown-linux-gnu/libclang_rt.asan.so
         if (self._sanitizer != 'None' or self._has_sanitizer_option):
-          clang_libdir = os.path.join(llvm_root, "lib/clang/9.0.0/lib")
+          clang_libdir = os.path.join(llvm_root, "lib/clang/9.0.1/lib")
           clang_libpaths = [os.path.join(clang_libdir, f) for f in os.listdir(clang_libdir)]
           self.output.info("clang_libpaths = {}".format(str(clang_libpaths)))
           # loop over
-          # lib/clang/9.0.0/lib/linux,
-          # lib/clang/9.0.0/lib/x86_64-unknown-linux-gnu,
+          # lib/clang/9.0.1/lib/linux,
+          # lib/clang/9.0.1/lib/x86_64-unknown-linux-gnu,
           # etc.
           for path in clang_libpaths:
-            common_build_flags.append("-L{}".format(path))
-            common_build_flags.append("-Wl,-rpath,{}".format(path))
-            common_link_flags.append("-L{}".format(path))
-            common_link_flags.append("-Wl,-rpath,{}".format(path))
-            self.cpp_info.libdirs.extend(["{}/lib".format(path)])
+            self.cpp_info.components["libclang_rt"].libdirs.extend([path])
+            libclang_rt_build_flags = []
+            libclang_rt_build_flags.append("-L{}".format(path))
+            libclang_rt_build_flags.append("-Wl,-rpath,{}".format(path))
+            libclang_rt_link_flags = []
+            libclang_rt_link_flags.append("-L{}".format(path))
+            libclang_rt_link_flags.append("-Wl,-rpath,{}".format(path))
+
+            self.cpp_info.components["libclang_rt"].cxxflags.extend(libclang_rt_build_flags)
+            self.cpp_info.components["libclang_rt"].cxxflags.extend(libclang_rt_build_flags)
+            self.cpp_info.components["libclang_rt"].cflags.extend(libclang_rt_build_flags)
+            self.cpp_info.components["libclang_rt"].cflags.extend(libclang_rt_build_flags)
+            self.cpp_info.components["libclang_rt"].sharedlinkflags.extend(libclang_rt_link_flags)
+            self.cpp_info.components["libclang_rt"].exelinkflags.extend(libclang_rt_link_flags)
+            self.cpp_info.components["libclang_rt"].sharedlinkflags.extend(libclang_rt_link_flags)
+            self.cpp_info.components["libclang_rt"].exelinkflags.extend(libclang_rt_link_flags)
+
+            # self.cpp_info.libdirs.extend(["{}/lib".format(path)])
             for sanlib in ['libclang_rt.lsan.so', 'libclang_rt.asan.so', \
                            'libclang_rt.tsan.so', 'libclang_rt.msan.so', \
                            'libclang_rt.ubsan.so']:
               if os.path.exists("{}/{}".format(path, sanlib)):
                 self.env_info.LD_PRELOAD.append("{}/{}".format(path, sanlib))
+            #
 
           # if not os.path.exists(clang_libdir):
           #   raise ConanInvalidConfiguration(str(clang_libdir) + " must exist")
@@ -403,21 +475,24 @@ class Clang9InstallerConan(ConanFile):
         #self.output.info("self.env_info.LD_PRELOAD = {}".format(self.env_info.LD_PRELOAD)))
 
         if self.options.link_libcxx:
-          common_link_flags.append("-lc++")
-          common_link_flags.append("-lc++abi")
-          common_link_flags.append("-lunwind")
-          common_link_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
-          common_link_flags.append("-stdlib=libc++")
+          libcxx_link_flags = []
+          libcxx_link_flags.append("-lc++")
+          libcxx_link_flags.append("-lc++abi")
+          libcxx_link_flags.append("-lunwind")
+          libcxx_link_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
+          libcxx_link_flags.append("-stdlib=libc++")
+          self.cpp_info.components["libcxx"].sharedlinkflags.extend(libcxx_link_flags)
+          self.cpp_info.components["libcxx"].exelinkflags.extend(libcxx_link_flags)
 
-        if self.options.link_libcxx:
-          # we use libstdc++, not libstdc++
-          badflag = '-stdlib=libstdc++'
-          while badflag in self.env_info.LDFLAGS:
-            self.env_info.LDFLAGS.remove(badflag)
-          while badflag in self.env_info.CXXFLAGS:
-            self.env_info.CXXFLAGS.remove(badflag)
-          while badflag in self.env_info.CFLAGS:
-            self.env_info.CFLAGS.remove(badflag)
+        #if self.options.link_libcxx:
+        #  # we use libstdc++, not libstdc++
+        #  badflag = '-stdlib=libstdc++'
+        #  while badflag in self.env_info.LDFLAGS:
+        #    self.env_info.LDFLAGS.remove(badflag)
+        #  while badflag in self.env_info.CXXFLAGS:
+        #    self.env_info.CXXFLAGS.remove(badflag)
+        #  while badflag in self.env_info.CFLAGS:
+        #    self.env_info.CFLAGS.remove(badflag)
 
         # TODO: do we need '-static-libstdc++' support at all?
         # if self.options.link_libcxx:
@@ -438,27 +513,31 @@ class Clang9InstallerConan(ConanFile):
           self.env_info.MSAN_SYMBOLIZER_PATH = llvm_symbolizer
 
         if self.options.link_libcxx:
-          ldflags.append("-stdlib=libc++")
-
-        if self.options.link_libcxx:
-          # https://root-forum.cern.ch/t/root-6-10-08-on-macos-high-sierra-compiling-macro-example/26651/24
-          common_build_flags.append("-Wno-unused-command-line-argument")
-          common_build_flags.append("-Wno-error=unused-command-line-argument")
-          common_build_flags.append("-nostdinc++")
-          common_build_flags.append("-nodefaultlibs")
-          common_build_flags.append("-lc++abi")
-          common_build_flags.append("-lunwind")
-          common_build_flags.append("-lc++")
-          common_build_flags.append("-lm")
-          common_build_flags.append("-lc")
-          common_build_flags.append("-stdlib=libc++")
-          common_build_flags.append("-isystem{}/include/c++/v1".format(llvm_root))
-          common_build_flags.append("-isystem\"{}/include\"".format(llvm_root))
-          common_build_flags.append("-isystem\"{}/lib/clang/9.0.0/include\"".format(llvm_root))
-          common_build_flags.append("-L{}/lib".format(llvm_root))
-          common_build_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
-          #cxxflags.append("-resource-dir {}/lib/clang/9.0.0".format(llvm_root))
-          self.cpp_info.libdirs.extend(["{}/lib".format(llvm_root)])
+          #cxxflags.append("-resource-dir {}/lib/clang/9.0.1".format(llvm_root))
+          #self.cpp_info.libdirs.extend(["{}/lib".format(llvm_root)])
+          self.cpp_info.components["libcxx"].libdirs.extend(["{}/lib".format(llvm_root)])
+          libcxx_link_flags = []
+          libcxx_link_flags.append("-stdlib=libc++")
+          self.cpp_info.components["libcxx"].sharedlinkflags.extend(libcxx_link_flags)
+          self.cpp_info.components["libcxx"].exelinkflags.extend(libcxx_link_flags)
+          libcxx_build_flags = []
+          libcxx_build_flags.append("-Wno-unused-command-line-argument")
+          libcxx_build_flags.append("-Wno-error=unused-command-line-argument")
+          libcxx_build_flags.append("-nostdinc++")
+          libcxx_build_flags.append("-nodefaultlibs")
+          libcxx_build_flags.append("-lc++abi")
+          libcxx_build_flags.append("-lunwind")
+          libcxx_build_flags.append("-lc++")
+          libcxx_build_flags.append("-lm")
+          libcxx_build_flags.append("-lc")
+          libcxx_build_flags.append("-stdlib=libc++")
+          libcxx_build_flags.append("-isystem{}/include/c++/v1".format(llvm_root))
+          libcxx_build_flags.append("-isystem\"{}/include\"".format(llvm_root))
+          libcxx_build_flags.append("-isystem\"{}/lib/clang/9.0.1/include\"".format(llvm_root))
+          libcxx_build_flags.append("-L{}/lib".format(llvm_root))
+          libcxx_build_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
+          self.cpp_info.components["libcxx"].sharedlinkflags.extend(libcxx_build_flags)
+          self.cpp_info.components["libcxx"].exelinkflags.extend(libcxx_build_flags)
 
         # if self._libcxx in ["libstdc++", "libstdc++11"]:
         #     self.cpp_info.libs.append("stdc++")
@@ -467,15 +546,15 @@ class Clang9InstallerConan(ConanFile):
         # elif self._libcxx in ["c++_static", "c++_shared"]:
         #     self.cpp_info.libs.extend([self._libcxx, "c++abi"])
 
-        self.cpp_info.cxxflags.extend(common_build_flags)
-        self.cpp_info.cxxflags.extend(cxxflags)
-        self.cpp_info.cflags.extend(common_build_flags)
-        self.cpp_info.cflags.extend(cflags)
-        self.cpp_info.sharedlinkflags.extend(common_link_flags)
-        self.cpp_info.exelinkflags.extend(common_link_flags)
-        self.cpp_info.sharedlinkflags.extend(ldflags)
-        self.cpp_info.exelinkflags.extend(ldflags)
+        #self.cpp_info.cxxflags.extend(common_build_flags)
+        #self.cpp_info.cxxflags.extend(cxxflags)
+        #self.cpp_info.cflags.extend(common_build_flags)
+        #self.cpp_info.cflags.extend(cflags)
+        #self.cpp_info.sharedlinkflags.extend(common_link_flags)
+        #self.cpp_info.exelinkflags.extend(common_link_flags)
+        #self.cpp_info.sharedlinkflags.extend(ldflags)
+        #self.cpp_info.exelinkflags.extend(ldflags)
 
         # NOTE: collects all flags, must be at the end
-        self.env_info.CXXFLAGS = " ".join(self.cpp_info.cxxflags)
-        self.env_info.LDFLAGS = " ".join(self.cpp_info.sharedlinkflags)
+        #self.env_info.CXXFLAGS = " ".join(self.cpp_info.cxxflags)
+        #self.env_info.LDFLAGS = " ".join(self.cpp_info.sharedlinkflags)

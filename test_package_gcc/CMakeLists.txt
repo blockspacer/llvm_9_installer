@@ -33,7 +33,6 @@ if(NOT TARGET CONAN_PKG::llvm_9_installer)
 endif()
 
 find_package( Threads REQUIRED )
-message(STATUS "CMAKE_THREAD_LIBS_INIT = ${CMAKE_THREAD_LIBS_INIT}")
 
 message(STATUS "CMAKE_DL_LIBS = ${CMAKE_DL_LIBS}")
 
@@ -64,7 +63,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
-  ${CMAKE_THREAD_LIBS_INIT}
+  Threads::Threads
+  ${CMAKE_DL_LIBS}
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
