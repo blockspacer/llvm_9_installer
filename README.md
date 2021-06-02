@@ -127,6 +127,34 @@ cmake_installer/3.15.5@conan/stable
 llvm_9_installer:compile_with_clang=True
 ```
 
+Execute to populate CC and CXX in `[env]` section of desired conan profile:
+
+```bash
+export PROFILE_UPDATE=clang9 ; \
+  conan profile update \
+    env.CC=$(conan info llvm_9/master@conan/stable \
+             -s build_type=Release \
+             --paths \
+             --only package_folder \
+             --profile $PROFILE_UPDATE \
+             | grep package_folder \
+             |  cut -d ":" -f2- \
+             | xargs echo -n\
+           )/bin/clang $PROFILE_UPDATE
+
+export PROFILE_UPDATE=clang9 ; \
+  conan profile update \
+    env.CXX=$(conan info llvm_9/master@conan/stable \
+             -s build_type=Release \
+             --paths \
+             --only package_folder \
+             --profile $PROFILE_UPDATE \
+             | grep package_folder \
+             |  cut -d ":" -f2- \
+             | xargs echo -n\
+           )/bin/clang++ $PROFILE_UPDATE
+```
+
 ```bash
 export VERBOSE=1
 export CONAN_REVISIONS_ENABLED=1
@@ -210,6 +238,34 @@ llvm_9_installer:compile_with_clang=True
 llvm_9_installer:link_libcxx=False
 llvm_9_installer:link_with_llvm_libs=True
 llvm_9_installer:include_what_you_use=False
+```
+
+Execute to populate CC and CXX in `[env]` section of desired conan profile:
+
+```bash
+export PROFILE_UPDATE=clang_9_cxx11abi_llvm_libs ; \
+  conan profile update \
+    env.CC=$(conan info llvm_9/master@conan/stable \
+             -s build_type=Release \
+             --paths \
+             --only package_folder \
+             --profile $PROFILE_UPDATE \
+             | grep package_folder \
+             |  cut -d ":" -f2- \
+             | xargs echo -n\
+           )/bin/clang $PROFILE_UPDATE
+
+export PROFILE_UPDATE=clang_9_cxx11abi_llvm_libs ; \
+  conan profile update \
+    env.CXX=$(conan info llvm_9/master@conan/stable \
+             -s build_type=Release \
+             --paths \
+             --only package_folder \
+             --profile $PROFILE_UPDATE \
+             | grep package_folder \
+             |  cut -d ":" -f2- \
+             | xargs echo -n\
+           )/bin/clang++ $PROFILE_UPDATE
 ```
 
 You `--profile` below based on compiler used during LLVM compilation (clang or gcc)
@@ -316,6 +372,34 @@ llvm_9_installer:link_libcxx=True
 [build_requires]
 cmake_installer/3.15.5@conan/stable
 llvm_9_installer/master@conan/stable
+```
+
+Execute to populate CC and CXX in `[env]` section of desired conan profile:
+
+```bash
+export PROFILE_UPDATE=clang_libcpp ; \
+  conan profile update \
+    env.CC=$(conan info llvm_9/master@conan/stable \
+             -s build_type=Release \
+             --paths \
+             --only package_folder \
+             --profile $PROFILE_UPDATE \
+             | grep package_folder \
+             |  cut -d ":" -f2- \
+             | xargs echo -n\
+           )/bin/clang $PROFILE_UPDATE
+
+export PROFILE_UPDATE=clang_libcpp ; \
+  conan profile update \
+    env.CXX=$(conan info llvm_9/master@conan/stable \
+             -s build_type=Release \
+             --paths \
+             --only package_folder \
+             --profile $PROFILE_UPDATE \
+             | grep package_folder \
+             |  cut -d ":" -f2- \
+             | xargs echo -n\
+           )/bin/clang++ $PROFILE_UPDATE
 ```
 
 Note that you may need to change some `llvm_9` options, based on desired configuration.
