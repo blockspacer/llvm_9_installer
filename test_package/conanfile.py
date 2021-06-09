@@ -86,10 +86,12 @@ class TestPackageConan(ConanFile):
             #extra_flags.append("-lunwind")
             extra_flags.append("-I\"{}/include/c++/v1\"".format(llvm_root))
             extra_flags.append("-isystem\"{}/include\"".format(llvm_root))
-            extra_flags.append("-isystem\"{}/lib/clang/9.0.1/include\"".format(llvm_root))
+            extra_flags.append("-isystem\"{}/lib/clang/12.0.1/include\"".format(llvm_root))
             #extra_flags.append("-L{}/lib".format(llvm_root))
             #extra_flags.append("-Wl,-rpath,{}/lib".format(llvm_root))
-            extra_flags.append("-resource-dir\"={}/lib/clang/9.0.1\"".format(llvm_root))
+
+            llvm_v = os.getenv("LLVM_CONAN_CLANG_VER", "9.0.1")
+            extra_flags.append("-resource-dir\"={}/lib/clang/{}\"".format(llvm_root, llvm_v))
 
             # test that libtooling can parse source file
             self.run(command=bin_path \

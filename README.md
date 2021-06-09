@@ -19,7 +19,7 @@ Features:
 * Avoid conflicts with system libs, headers, etc. when using bundled 'libc++' ("-nostdinc++", "-nodefaultlibs", etc.)
 * Set env. vars automatically i.e. UBSAN_SYMBOLIZER_PATH will point to llvm-symbolizer when self.settings.get_safe("compiler.sanitizer") == 'Memory'
 * Set paths in CXXFLAGS to compiler headers and libs in LDFLAGS automatically
-* Set LD_PRELOAD sanitiled `clang_rt` libs automatically i.e. preloads libs in `.../lib/clang/{clang_version}/lib/{platform_name}/libclang_rt.*san-{platform_target}.so`
+* Set in `LD_PRELOAD` path to sanitized `clang_rt` libs automatically i.e. preloads libs in `.../lib/clang/{clang_version}/lib/{platform_name}/libclang_rt.*san-{platform_target}.so`
 
 ## How it works
 
@@ -117,42 +117,18 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
+compiler.cppstd=17
 
 llvm_9:build_type=Release
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
+llvm_9_installer/master@conan/stable
 
 [options]
 llvm_9_installer:compile_with_clang=True
-```
-
-Execute to populate CC and CXX in `[env]` section of desired conan profile:
-
-```bash
-export PROFILE_UPDATE=clang9 ; \
-  conan profile update \
-    env.CC=$(conan info llvm_9/master@conan/stable \
-             -s build_type=Release \
-             --paths \
-             --only package_folder \
-             --profile $PROFILE_UPDATE \
-             | grep package_folder \
-             |  cut -d ":" -f2- \
-             | xargs echo -n\
-           )/bin/clang $PROFILE_UPDATE
-
-export PROFILE_UPDATE=clang9 ; \
-  conan profile update \
-    env.CXX=$(conan info llvm_9/master@conan/stable \
-             -s build_type=Release \
-             --paths \
-             --only package_folder \
-             --profile $PROFILE_UPDATE \
-             | grep package_folder \
-             |  cut -d ":" -f2- \
-             | xargs echo -n\
-           )/bin/clang++ $PROFILE_UPDATE
+llvm_9_installer:link_libcxx=False
 ```
 
 ```bash
@@ -238,34 +214,11 @@ llvm_9_installer:compile_with_clang=True
 llvm_9_installer:link_libcxx=False
 llvm_9_installer:link_with_llvm_libs=True
 llvm_9_installer:include_what_you_use=False
-```
 
-Execute to populate CC and CXX in `[env]` section of desired conan profile:
-
-```bash
-export PROFILE_UPDATE=clang_9_cxx11abi_llvm_libs ; \
-  conan profile update \
-    env.CC=$(conan info llvm_9/master@conan/stable \
-             -s build_type=Release \
-             --paths \
-             --only package_folder \
-             --profile $PROFILE_UPDATE \
-             | grep package_folder \
-             |  cut -d ":" -f2- \
-             | xargs echo -n\
-           )/bin/clang $PROFILE_UPDATE
-
-export PROFILE_UPDATE=clang_9_cxx11abi_llvm_libs ; \
-  conan profile update \
-    env.CXX=$(conan info llvm_9/master@conan/stable \
-             -s build_type=Release \
-             --paths \
-             --only package_folder \
-             --profile $PROFILE_UPDATE \
-             | grep package_folder \
-             |  cut -d ":" -f2- \
-             | xargs echo -n\
-           )/bin/clang++ $PROFILE_UPDATE
+[build_requires]
+cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
+llvm_9_installer/master@conan/stable
 ```
 
 You `--profile` below based on compiler used during LLVM compilation (clang or gcc)
@@ -362,6 +315,7 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
+compiler.cppstd=17
 
 build_type=Release
 llvm_9:build_type=Release
@@ -371,35 +325,8 @@ llvm_9_installer:link_libcxx=True
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
 llvm_9_installer/master@conan/stable
-```
-
-Execute to populate CC and CXX in `[env]` section of desired conan profile:
-
-```bash
-export PROFILE_UPDATE=clang_libcpp ; \
-  conan profile update \
-    env.CC=$(conan info llvm_9/master@conan/stable \
-             -s build_type=Release \
-             --paths \
-             --only package_folder \
-             --profile $PROFILE_UPDATE \
-             | grep package_folder \
-             |  cut -d ":" -f2- \
-             | xargs echo -n\
-           )/bin/clang $PROFILE_UPDATE
-
-export PROFILE_UPDATE=clang_libcpp ; \
-  conan profile update \
-    env.CXX=$(conan info llvm_9/master@conan/stable \
-             -s build_type=Release \
-             --paths \
-             --only package_folder \
-             --profile $PROFILE_UPDATE \
-             | grep package_folder \
-             |  cut -d ":" -f2- \
-             | xargs echo -n\
-           )/bin/clang++ $PROFILE_UPDATE
 ```
 
 Note that you may need to change some `llvm_9` options, based on desired configuration.
@@ -984,6 +911,7 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
+compiler.cppstd=17
 
 # enable sanitizer
 compiler.sanitizer=AddressUndefinedBehavior
@@ -1000,6 +928,7 @@ llvm_9:use_sanitizer="Address;Undefined"
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
 llvm_9_installer/master@conan/stable
 
 [env]
@@ -1069,6 +998,7 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
+compiler.cppstd=17
 
 # enable sanitizer
 compiler.sanitizer=AddressUndefinedBehavior
@@ -1085,6 +1015,7 @@ llvm_9:use_sanitizer="Address;Undefined"
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
 llvm_9_installer/master@conan/stable
 
 [env]
@@ -1156,6 +1087,7 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
+compiler.cppstd=17
 
 # enable sanitizer
 compiler.sanitizer=Thread
@@ -1172,6 +1104,7 @@ llvm_9:use_sanitizer="Thread"
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
 llvm_9_installer/master@conan/stable
 
 [env]
@@ -1241,6 +1174,7 @@ arch=x86_64
 compiler=clang
 compiler.version=9
 compiler.libcxx=libc++
+compiler.cppstd=17
 
 # enable sanitizer
 compiler.sanitizer=Memory
@@ -1257,6 +1191,7 @@ llvm_9:use_sanitizer="MemoryWithOrigins"
 
 [build_requires]
 cmake_installer/3.15.5@conan/stable
+llvm_9/master@conan/stable
 llvm_9_installer/master@conan/stable
 
 [env]
@@ -1305,3 +1240,117 @@ TEST_SANITIZER='msan_test_corruption' \
 ```
 
 Now you can build and export llvm conan package with desired options
+
+# How to use with other llvm versions
+
+Make sure "12" availible as clang version in `~/.conan/settings.yml`
+
+```bash
+export llvm_9_llvm_version="release/12.x"
+export llvm_9_iwyu_version="clang_12"
+export llvm_9_BUILD_NUMBER=-clang_12
+
+export LLVM_9_PKG_NAME="llvm_9"
+export LLVM_9_PKG_VER="master$llvm_9_BUILD_NUMBER"
+export LLVM_9_PKG_CHANNEL="conan/stable"
+
+export llvm_9_installer_BUILD_NUMBER=-clang_12
+
+export LLVM_CONAN_PACKAGE_ID_COMILER_VER="12"
+export LLVM_CONAN_CLANG_VER="12.0.1"
+```
+
+Conan profile (in `~/.conan/profiles`) must use same CXX ABI as used LLVM libs, example profile:
+
+Create clang12 profile:
+
+```bash
+[settings]
+os_build=Linux
+os=Linux
+arch_build=x86_64
+arch=x86_64
+
+compiler=clang
+compiler.version=12
+compiler.libcxx=libc++
+compiler.cppstd=17
+
+llvm_9:build_type=Release
+
+[build_requires]
+cmake_installer/3.15.5@conan/stable
+llvm_9/master-clang_12@conan/stable
+llvm_9_installer/master-clang_12@conan/stable
+
+[options]
+llvm_9_installer:compile_with_clang=True
+llvm_9_installer:link_libcxx=False
+llvm_9_installer:LLVM_9_PKG_NAME=llvm_9
+llvm_9_installer:LLVM_9_PKG_VER=master-clang_12
+llvm_9_installer:LLVM_9_PKG_CHANNEL=conan/stable
+llvm_9_installer:LLVM_CONAN_CLANG_VER=12.0.1
+```
+
+```bash
+export VERBOSE=1
+export CONAN_REVISIONS_ENABLED=1
+export CONAN_VERBOSE_TRACEBACK=1
+export CONAN_PRINT_RUN_COMMANDS=1
+export CONAN_LOGGING_LEVEL=10
+export GIT_SSL_NO_VERIFY=true
+
+rm -rf test_package/build/
+rm -rf local_build_iwyu_clang_12
+
+cmake -E time \
+  conan install . \
+  --install-folder local_build_iwyu_clang_12 \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:compile_with_clang=True \
+  -o llvm_9_installer:link_libcxx=False \
+  --profile clang12
+
+cmake -E time \
+    conan source . \
+    --source-folder local_build_iwyu_clang_12 \
+    --install-folder local_build_iwyu_clang_12
+
+conan build . \
+    --build-folder local_build_iwyu_clang_12 \
+    --source-folder local_build_iwyu_clang_12 \
+    --install-folder local_build_iwyu_clang_12
+
+# remove before `conan export-pkg`
+(CONAN_REVISIONS_ENABLED=1 \
+    conan remove --force llvm_9_installer || true)
+
+conan package . \
+    --build-folder local_build_iwyu_clang_12 \
+    --package-folder local_build_iwyu_clang_12/package_dir \
+    --source-folder local_build_iwyu_clang_12 \
+    --install-folder local_build_iwyu_clang_12
+
+conan export-pkg . \
+    conan/stable \
+    --package-folder local_build_iwyu_clang_12/package_dir \
+    --settings build_type=Release \
+    --force \
+    -s llvm_9:build_type=Release \
+    -o llvm_9_installer:compile_with_clang=True \
+    -o llvm_9_installer:link_libcxx=False \
+    --profile clang12
+
+cmake -E time \
+  conan test test_package llvm_9_installer/master$llvm_9_installer_BUILD_NUMBER@conan/stable \
+  -s build_type=Release \
+  -s llvm_9:build_type=Release \
+  -o llvm_9_installer:compile_with_clang=True \
+  -o llvm_9_installer:link_libcxx=False \
+  --profile clang12
+
+rm -rf local_build_iwyu_clang_12/package_dir
+```
+
+Now you can depend on conan package `llvm_9_installer/master$llvm_9_installer_BUILD_NUMBER@conan/stable`
