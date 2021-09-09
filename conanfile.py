@@ -143,9 +143,13 @@ def get_version(name, version):
     envvar = os.getenv("{}_BUILD_NUMBER".format(name))
     return (version + envvar) if envvar else version
 
+def get_name(default):
+    envvar = os.getenv("LLVM_INSTALLER_PACKAGE_NAME", default)
+    return envvar
+
 # see https://github.com/conan-io/conan-center-index/blob/master/recipes/protobuf/3.9.x/conanfile.py
 class Clang9InstallerConan(ConanFile):
-    name = "llvm_9_installer"
+    name = get_name("llvm_9_installer")
     version = get_version(name, "master")
     description = "Conan installer for clang 9, llvm 9, iwyu, sanitizers, etc."
     topics = ("conan", "clang", "llvm", "iwyu", "include-what-you-use", "libc++", "libcpp")
@@ -167,14 +171,14 @@ class Clang9InstallerConan(ConanFile):
     short_paths = True
     settings = "os_build", "build_type", "arch_build", "compiler", "arch"
 
-    # Allows to enforce default options for `llvm_9` dependency
-    # and check that wrapper package (`llvm_9_installer`) uses same set of options
-    # as `llvm_9` dependency (because different sets of options must not collide).
-    # 'ANY' means use same default value as in `llvm_9` dependency
+    # Allows to enforce default options for `llvm_xxx` dependency
+    # and check that wrapper package (`llvm_xxx_installer`) uses same set of options
+    # as `llvm_xxx` dependency (because different sets of options must not collide).
+    # 'ANY' means use same default value as in `llvm_xxx` dependency
     #
-    # For example, if you set `llvm_9_installer:include_what_you_use=False`,
-    # than `llvm_9:include_what_you_use=False` will be set automatically
-    llvm_9_options = {
+    # For example, if you set `llvm_xxx_installer:include_what_you_use=False`,
+    # than `llvm_xxx:include_what_you_use=False` will be set automatically
+    llvm_options = {
       **{
         'with_' + library : library in default_llvm_libs for library in llvm_libs },
       **{
@@ -204,31 +208,31 @@ class Clang9InstallerConan(ConanFile):
     }}
 
     options = {
-      **dict([(key, 'ANY') for (key, value) in llvm_9_options.items()]),
+      **dict([(key, 'ANY') for (key, value) in llvm_options.items()]),
       **{
         # Will set `-stdlib=libc++` if `True`
         'link_libcxx': [True, False],
         # Will set `self.env_info.CXX` if `True`
         'compile_with_clang': [True, False],
-        'LLVM_9_PKG_NAME': 'ANY',
-        'LLVM_9_PKG_VER': 'ANY',
-        'LLVM_9_PKG_CHANNEL': 'ANY',
+        'LLVM_PKG_NAME': 'ANY',
+        'LLVM_PKG_VER': 'ANY',
+        'LLVM_PKG_CHANNEL': 'ANY',
         'LLVM_CONAN_CLANG_VER': 'ANY',
     }}
 
     default_options = {
-      **dict([(key, value) for (key, value) in llvm_9_options.items()]),
+      **dict([(key, value) for (key, value) in llvm_options.items()]),
       **{
         'link_libcxx': True,
         'compile_with_clang': True,
-        'LLVM_9_PKG_NAME': "llvm_9",
-        'LLVM_9_PKG_VER': "master",
-        'LLVM_9_PKG_CHANNEL': "conan/stable",
+        'LLVM_PKG_NAME': "llvm_9",
+        'LLVM_PKG_VER': "master",
+        'LLVM_PKG_CHANNEL': "conan/stable",
         'LLVM_CONAN_CLANG_VER': '9.0.1',
     }}
 
     # Same as
-    # self.options["llvm_9"].include_what_you_use = self.options.include_what_you_use
+    # self.options["llvm_xxx"].include_what_you_use = self.options.include_what_you_use
     # etc.
     def set_dependency_options(self, dependency_name, dependency_options_dict):
         options_dict = dict([(key, value) for key, value in self.options.items()])
@@ -246,12 +250,12 @@ class Clang9InstallerConan(ConanFile):
           # 'ANY' - no default value
           if (getattr(self.options, key) != 'ANY' \
             and not key in dependency_options_dict.keys()):
-            raise ConanInvalidConfiguration(str(key) + " must be in llvm_9_options")
+            raise ConanInvalidConfiguration(str(key) + " must be in llvm_options")
 
     # config_options() is used to configure or constraint the available options
     # in a package, before they are given a value
     def config_options(self):
-        self.set_dependency_options("llvm_9", self.llvm_9_options)
+        self.set_dependency_options(str(self.options.LLVM_PKG_NAME), self.llvm_options)
 
     # NOTE: do not use self.settings.compiler.sanitizer
     # because it may throw ConanException if 'settings.compiler.sanitizer'
@@ -269,7 +273,7 @@ class Clang9InstallerConan(ConanFile):
       return self.options.use_sanitizer != 'None'
 
     def configure(self):
-        self.set_dependency_options("llvm_9", self.llvm_9_options)
+        self.set_dependency_options(str(self.options.LLVM_PKG_NAME), self.llvm_options)
 
         if self._sanitizer != 'None' \
            and not self._has_sanitizer_option:
@@ -293,21 +297,21 @@ class Clang9InstallerConan(ConanFile):
     #    self.output.info("build requirements")
     #
     #    self.build_requires("{}/{}@{}".format( \
-    #      self.options.LLVM_9_PKG_NAME, \
-    #      self.options.LLVM_9_PKG_VER, \
-    #      self.options.LLVM_9_PKG_CHANNEL))
+    #      self.options.LLVM_PKG_NAME, \
+    #      self.options.LLVM_PKG_VER, \
+    #      self.options.LLVM_PKG_CHANNEL))
 
     def requirements(self):
         self.output.info("requirements")
 
         self.requires("{}/{}@{}".format( \
-          self.options.LLVM_9_PKG_NAME, \
-          self.options.LLVM_9_PKG_VER, \
-          self.options.LLVM_9_PKG_CHANNEL))
+          self.options.LLVM_PKG_NAME, \
+          self.options.LLVM_PKG_VER, \
+          self.options.LLVM_PKG_CHANNEL))
 
     def package(self):
         self.output.info("package")
-        self.check_options_same("llvm_9", self.llvm_9_options)
+        self.check_options_same(str(self.options.LLVM_PKG_NAME), self.llvm_options)
 
         self.copy(pattern="LICENSE", dst="licenses", src=self.build_folder)
 
@@ -337,27 +341,36 @@ class Clang9InstallerConan(ConanFile):
         # llvm_core clang_core llvm_tools
         self.cpp_info.components["libcxx"].names["cmake_find_package"] = "libcxx"
         self.cpp_info.components["libcxx"].names["cmake_find_package_multi"] = "libcxx"
-        self.cpp_info.components["libcxx"].requires = ["llvm_9::llvm_9"]
-        if self.options["llvm_9"].add_to_includedirs:
-          self.cpp_info.components["libcxx"].requires.extend(["llvm_9::includedirs"])
-        if self.options["llvm_9"].add_to_libdirs:
-          self.cpp_info.components["libcxx"].requires.extend(["llvm_9::libdirs"])
+        self.cpp_info.components["libcxx"].requires = [\
+          "{}::{}".format(self.options.LLVM_PKG_NAME, self.options.LLVM_PKG_NAME)]
+        if self.options[str(self.options.LLVM_PKG_NAME)].add_to_includedirs:
+          self.cpp_info.components["libcxx"].requires.extend([\
+            "{}::includedirs".format(self.options.LLVM_PKG_NAME)])
+        if self.options[str(self.options.LLVM_PKG_NAME)].add_to_libdirs:
+          self.cpp_info.components["libcxx"].requires.extend([\
+            "{}::libdirs".format(self.options.LLVM_PKG_NAME)])
 
         self.cpp_info.components["libclang_rt"].names["cmake_find_package"] = "libclang_rt"
         self.cpp_info.components["libclang_rt"].names["cmake_find_package_multi"] = "libclang_rt"
-        self.cpp_info.components["libclang_rt"].requires = ["llvm_9::llvm_9"]
-        if self.options["llvm_9"].link_with_llvm_libs:
-          self.cpp_info.components["libclang_rt"].requires.extend(["llvm_9::clang_core", "llvm_9::llvm_core"])
+        self.cpp_info.components["libclang_rt"].requires = [\
+          "{}::{}".format(self.options.LLVM_PKG_NAME, self.options.LLVM_PKG_NAME)]
+        if self.options[str(self.options.LLVM_PKG_NAME)].link_with_llvm_libs:
+          self.cpp_info.components["libclang_rt"].requires.extend(\
+            ["{}::clang_core".format(self.options.LLVM_PKG_NAME), \
+             "{}::llvm_core".format(self.options.LLVM_PKG_NAME)])
 
         self.cpp_info.components["clang_compiler"].names["cmake_find_package"] = "clang_compiler"
         self.cpp_info.components["clang_compiler"].names["cmake_find_package_multi"] = "llvm_tools"
-        self.cpp_info.components["clang_compiler"].requires = ["llvm_9::llvm_9"]
-        if self.options["llvm_9"].add_to_bindirs:
-          self.cpp_info.components["clang_compiler"].requires.extend(["llvm_9::llvm_tools", "llvm_9::bindirs"])
+        self.cpp_info.components["clang_compiler"].requires = [\
+          "{}::{}".format(self.options.LLVM_PKG_NAME, self.options.LLVM_PKG_NAME)]
+        if self.options[str(self.options.LLVM_PKG_NAME)].add_to_bindirs:
+          self.cpp_info.components["clang_compiler"].requires.extend(\
+            ["{}::llvm_tools".format(self.options.LLVM_PKG_NAME), \
+             "{}::bindirs".format(self.options.LLVM_PKG_NAME)])
 
-        llvm_root = self.deps_cpp_info["llvm_9"].rootpath
+        llvm_root = self.deps_cpp_info[str(self.options.LLVM_PKG_NAME)].rootpath
         self.env_info.LLVM_NORMPATH = os.path.normpath(llvm_root)
-        self.output.info("llvm_9 rootpath: {}".format(llvm_root))
+        self.output.info("llvm rootpath: {}".format(llvm_root))
         #
         self.env_info.IWYU_PATH = os.path.join(llvm_root, "bin", "include-what-you-use")
         self.env_info.CLANG_FORMAT_PATH = os.path.join(llvm_root, "bin", "clang-format")

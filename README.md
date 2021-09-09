@@ -97,9 +97,9 @@ If you need to use multiple `llvm_9` versions with different options at same tim
 than you can change `BUILD_NUMBER` env. var. during `llvm_9` build, example:
 `BUILD_NUMBER=-static-sanitized conan export-pkg . my_channel/release`
 and change env. vars during `llvm_9_installer` build:
-* LLVM_9_PKG_NAME - defaults to "llvm_9"
-* LLVM_9_PKG_VER - defaults to "master"
-* LLVM_9_PKG_CHANNEL - defaults to "conan/stable"
+* LLVM_PKG_NAME - defaults to "llvm_9"
+* LLVM_PKG_VER - defaults to "master"
+* LLVM_PKG_CHANNEL - defaults to "conan/stable"
 
 ## Build and install
 
@@ -137,7 +137,6 @@ export CONAN_REVISIONS_ENABLED=1
 export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 rm -rf test_package/build/
 rm -rf local_build_iwyu
@@ -243,7 +242,6 @@ export CONAN_REVISIONS_ENABLED=1
 export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 rm -rf test_package/build/
 rm -rf local_build_llvm_libs
@@ -416,7 +414,6 @@ export CONAN_REVISIONS_ENABLED=1
 export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 rm -rf test_package/build/
 rm -rf local_build_*
@@ -768,7 +765,6 @@ export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 rm -rf test_package/build/
 rm -rf local_build_*
@@ -878,7 +874,6 @@ export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 rm -rf test_package_gcc/build/
 
@@ -952,7 +947,6 @@ export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 conan create . \
   conan/stable \
@@ -1039,7 +1033,6 @@ export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 conan create . \
   conan/stable \
@@ -1126,7 +1119,6 @@ export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 conan create . \
   conan/stable \
@@ -1215,7 +1207,6 @@ export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOG_RUN_TO_FILE=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 conan create . \
   conan/stable \
@@ -1246,15 +1237,19 @@ Now you can build and export llvm conan package with desired options
 Make sure "12" availible as clang version in `~/.conan/settings.yml`
 
 ```bash
-export llvm_9_llvm_version="release/12.x"
-export llvm_9_iwyu_version="clang_12"
-export llvm_9_BUILD_NUMBER=-clang_12
+export LLVM_PKG_NAME="llvm_12"
+export LLVM_INSTALLER_PACKAGE_NAME="llvm_12_installer"
 
-export LLVM_9_PKG_NAME="llvm_9"
-export LLVM_9_PKG_VER="master$llvm_9_BUILD_NUMBER"
-export LLVM_9_PKG_CHANNEL="conan/stable"
+export $LLVM_PKG_NAME\_llvm_version="release/12.x"
+export $LLVM_PKG_NAME\_iwyu_version="clang_12"
+export $LLVM_PKG_NAME\_BUILD_NUMBER=-clang_12
 
-export llvm_9_installer_BUILD_NUMBER=-clang_12
+export LLVM_PKG_VER="master$LLVM_PKG_NAME\_BUILD_NUMBER"
+export LLVM_PKG_CHANNEL="conan/stable"
+
+export $LLVM_INSTALLER_PACKAGE_NAME\_BUILD_NUMBER=-clang_12
+
+export $BUILD_NUMBER=-clang_12
 
 export LLVM_CONAN_PACKAGE_ID_COMILER_VER="12"
 export LLVM_CONAN_CLANG_VER="12.0.1"
@@ -1270,26 +1265,22 @@ os_build=Linux
 os=Linux
 arch_build=x86_64
 arch=x86_64
-
 compiler=clang
 compiler.version=12
 compiler.libcxx=libc++
 compiler.cppstd=17
-
-llvm_9:build_type=Release
-
+llvm_12:build_type=Release
+[options]
+llvm_12_installer:compile_with_clang=True
+llvm_12_installer:link_libcxx=False
+llvm_12_installer:LLVM_PKG_NAME=llvm_12
+llvm_12_installer:LLVM_PKG_VER=master-clang_12
+llvm_12_installer:LLVM_PKG_CHANNEL=conan/stable
+llvm_12_installer:LLVM_CONAN_CLANG_VER=12.0.1
 [build_requires]
 cmake_installer/3.15.5@conan/stable
-llvm_9/master-clang_12@conan/stable
-llvm_9_installer/master-clang_12@conan/stable
-
-[options]
-llvm_9_installer:compile_with_clang=True
-llvm_9_installer:link_libcxx=False
-llvm_9_installer:LLVM_9_PKG_NAME=llvm_9
-llvm_9_installer:LLVM_9_PKG_VER=master-clang_12
-llvm_9_installer:LLVM_9_PKG_CHANNEL=conan/stable
-llvm_9_installer:LLVM_CONAN_CLANG_VER=12.0.1
+llvm_12/master-clang_12@conan/stable
+llvm_12_installer/master-clang_12@conan/stable
 ```
 
 ```bash
@@ -1298,7 +1289,6 @@ export CONAN_REVISIONS_ENABLED=1
 export CONAN_VERBOSE_TRACEBACK=1
 export CONAN_PRINT_RUN_COMMANDS=1
 export CONAN_LOGGING_LEVEL=10
-export GIT_SSL_NO_VERIFY=true
 
 rm -rf test_package/build/
 rm -rf local_build_iwyu_clang_12
@@ -1307,9 +1297,9 @@ cmake -E time \
   conan install . \
   --install-folder local_build_iwyu_clang_12 \
   -s build_type=Release \
-  -s llvm_9:build_type=Release \
-  -o llvm_9_installer:compile_with_clang=True \
-  -o llvm_9_installer:link_libcxx=False \
+  -s llvm_12:build_type=Release \
+  -o llvm_12_installer:compile_with_clang=True \
+  -o llvm_12_installer:link_libcxx=False \
   --profile clang12
 
 cmake -E time \
@@ -1324,7 +1314,7 @@ conan build . \
 
 # remove before `conan export-pkg`
 (CONAN_REVISIONS_ENABLED=1 \
-    conan remove --force llvm_9_installer || true)
+    conan remove --force llvm_12_installer || true)
 
 conan package . \
     --build-folder local_build_iwyu_clang_12 \
@@ -1337,20 +1327,20 @@ conan export-pkg . \
     --package-folder local_build_iwyu_clang_12/package_dir \
     --settings build_type=Release \
     --force \
-    -s llvm_9:build_type=Release \
-    -o llvm_9_installer:compile_with_clang=True \
-    -o llvm_9_installer:link_libcxx=False \
+    -s llvm_12:build_type=Release \
+    -o llvm_12_installer:compile_with_clang=True \
+    -o llvm_12_installer:link_libcxx=False \
     --profile clang12
 
 cmake -E time \
-  conan test test_package llvm_9_installer/master$llvm_9_installer_BUILD_NUMBER@conan/stable \
+  conan test test_package llvm_12_installer/master$BUILD_NUMBER@conan/stable \
   -s build_type=Release \
-  -s llvm_9:build_type=Release \
-  -o llvm_9_installer:compile_with_clang=True \
-  -o llvm_9_installer:link_libcxx=False \
+  -s llvm_12:build_type=Release \
+  -o llvm_12_installer:compile_with_clang=True \
+  -o llvm_12_installer:link_libcxx=False \
   --profile clang12
 
 rm -rf local_build_iwyu_clang_12/package_dir
 ```
 
-Now you can depend on conan package `llvm_9_installer/master$llvm_9_installer_BUILD_NUMBER@conan/stable`
+Now you can depend on conan package `llvm_12_installer/master$BUILD_NUMBER@conan/stable`

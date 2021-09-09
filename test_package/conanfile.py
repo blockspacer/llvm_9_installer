@@ -1,52 +1,34 @@
 from conans import ConanFile, CMake, tools, RunEnvironment
 import os
 
+def get_name(default):
+    envvar = os.getenv("LLVM_INSTALLER_PACKAGE_NAME", default)
+    return envvar
+
 class TestPackageConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     generators = "cmake", "cmake_find_package", "cmake_paths"
 
     @property
-    def _has_sanitizers(self):
-      return self.options["llvm_9_installer"].use_sanitizer != 'None'
+    def _parent_options(self):
+      return self.options[get_name("llvm_9_installer")]
 
-    # def build_requirements(self):
-    #     # https://github.com/conan-io/conan/issues/8466
-    #     self.build_requires("llvm_9_installer/{}@{}/{}".format(\
-    #       self.requires["llvm_9_installer"].ref.version, \
-    #       self.requires["llvm_9_installer"].ref.user, \
-    #       self.requires["llvm_9_installer"].ref.channel))
-    #
-    # def requirements(self):
-    #     self.output.info("requirements")
-    #
-    #     self.requires("{}/{}@{}".format( \
-    #       os.getenv("LLVM_9_PKG_NAME", "llvm_9"), \
-    #       os.getenv("LLVM_9_PKG_VER", "master"), \
-    #       os.getenv("LLVM_9_PKG_CHANNEL", "conan/stable")))
+    @property
+    def _has_sanitizers(self):
+      return self._parent_options.use_sanitizer != 'None'
 
     def build(self):
-
-        #print("env ",self.env)                                 # ok
-        #print("environ ",os.environ)                       # ok
-        #print("deps_cpp_info ", self.deps_cpp_info["llvm_9_installer"])    # ok
-        #print("deps_env_info ", self.deps_env_info["llvm_9_installer"])    # fails
-        #
-        #self.old_env = dict(os.environ)
-
-        # see https://github.com/conan-io/conan/issues/1858
-        # env = tools.environment_append(RunEnvironment(self).vars)
-        # deps_env = self.deps_cpp_info["llvm_9_installer"].components["clang_compiler"].env_info
-        # with tools.environment_append(deps_env):
 
         cmake = CMake(self)
         cmake.parallel = True
         cmake.verbose = True
         cmake.definitions["LINKS_LIBCXX"] = "ON" \
-          if self.options["llvm_9_installer"].link_libcxx else "OFF"
+          if self._parent_options.link_libcxx else "OFF"
         cmake.definitions["HAS_SANITIZERS"] = "ON" \
           if self._has_sanitizers else "OFF"
         cmake.definitions["LINKS_LLVM_LIBS"] = "ON" \
-          if self.options["llvm_9_installer"].link_with_llvm_libs else "OFF"
+          if self._parent_options.link_with_llvm_libs else "OFF"
+        cmake.definitions["LLVM_PACKAGE_NAME"] = self._parent_options.LLVM_PKG_NAME
         #cmake.definitions["CONAN_DISABLE_CHECK_COMPILER"] = "ON"
         #cmake.definitions["CMAKE_CXX_COMPILER_ID"] = ""
         #cmake.definitions["CMAKE_C_COMPILER_ID"] = ""
@@ -74,7 +56,7 @@ class TestPackageConan(ConanFile):
             # must run without error
             self.run(command=bin_path + " --version", run_environment=True)
 
-            llvm_root = self.deps_cpp_info["llvm_9"].rootpath
+            llvm_root = self.deps_cpp_info[str(self._parent_options.LLVM_PKG_NAME)].rootpath
             extra_flags = []
             #extra_flags.append("-nostdinc")
             extra_flags.append("-nostdinc++")
